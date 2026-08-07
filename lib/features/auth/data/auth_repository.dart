@@ -1,10 +1,13 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/default_categories.dart';
+import '../../../core/constants/platform_ids.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/demo_store.dart';
@@ -12,10 +15,6 @@ import '../../../core/utils/rate_limiter.dart';
 import '../../profile/domain/user_profile.dart';
 import '../../settings/domain/app_settings.dart';
 import '../../accounts/domain/account.dart';
-
-/// Web OAuth client from Firebase (needed for ID tokens on Android too).
-const _googleWebClientId =
-    '293916450719-9muqkj0gjspieqoumad04kqcius43q21.apps.googleusercontent.com';
 
 class AuthRepository {
   AuthRepository(this._ref);
@@ -118,7 +117,7 @@ class AuthRepository {
   Future<void> _ensureGoogleInitialized() async {
     if (_googleReady || kIsWeb) return;
     await GoogleSignIn.instance.initialize(
-      serverClientId: _googleWebClientId,
+      serverClientId: PlatformIds.googleWebClientId,
     );
     _googleReady = true;
   }
@@ -185,7 +184,8 @@ class AuthRepository {
           message.contains('apiexception: 10')) {
         throw AuthException(
           'Google sign-in misconfigured. In Firebase Console → Project settings → '
-          'Your Android app, add the debug SHA-1 fingerprint, then retry.',
+          'Android app (${PlatformIds.androidApplicationId}), add the SHA-1 '
+          'fingerprint for this build, then retry.',
         );
       }
       if (message.contains('popup_closed') ||
@@ -229,19 +229,110 @@ class AuthRepository {
     await _backend.auth!.signOut();
   }
 
-  Future<void> deleteAccount() async {
+  Future<void> deleteAccount({String? password}) async {
     if (_backend.isDemo) {
       await _demo.deleteAccount();
       return;
     }
     final user = _backend.auth!.currentUser;
     if (user == null) return;
-    final uid = user.uid;
-    final batch = _backend.firestore!.batch();
-    batch.delete(_backend.firestore!.doc(FirestorePaths.user(uid)));
-    batch.delete(_backend.firestore!.doc(FirestorePaths.settings(uid)));
-    await batch.commit();
-    await user.delete();
+
+    try {
+      await _reauthenticateForDeletion(user, password: password);
+      await user.getIdToken(true);
+
+      if (!kIsWeb) {
+        await FirebaseCrashlytics.instance.setCustomKey(
+          'account_deletion_started',
+          true,
+        );
+      }
+
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-south1',
+      ).httpsCallable('deleteUserAccount');
+      await callable.call<void>();
+
+      try {
+        if (!kIsWeb) {
+          await _ensureGoogleInitialized();
+          await GoogleSignIn.instance.signOut();
+          await FirebaseCrashlytics.instance.log(
+            'Account deletion completed',
+          );
+        }
+      } catch (_) {}
+      await _backend.auth!.signOut();
+    } on FirebaseFunctionsException catch (e, stack) {
+      if (!kIsWeb) {
+        await FirebaseCrashlytics.instance.recordError(
+          e,
+          stack,
+          reason: 'deleteUserAccount callable failed',
+        );
+      }
+      final message = switch (e.code) {
+        'failed-precondition' =>
+          'Please sign in again before deleting your account.',
+        'unauthenticated' => 'Please sign in again and retry.',
+        _ => e.message ?? 'Could not completely delete the account.',
+      };
+      throw AuthException(message, code: e.code);
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(_mapAuthError(e), code: e.code);
+    }
+  }
+
+  Future<void> _reauthenticateForDeletion(
+    User user, {
+    String? password,
+  }) async {
+    final providerIds = user.providerData
+        .map((provider) => provider.providerId)
+        .toSet();
+
+    if (providerIds.contains(EmailAuthProvider.PROVIDER_ID)) {
+      if (password == null || password.isEmpty || user.email == null) {
+        throw AuthException(
+          'Enter your password to confirm account deletion.',
+          code: 'password-required',
+        );
+      }
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(
+          email: user.email!,
+          password: password,
+        ),
+      );
+      return;
+    }
+
+    if (providerIds.contains(GoogleAuthProvider.PROVIDER_ID)) {
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider()
+          ..setCustomParameters({'prompt': 'select_account'});
+        await user.reauthenticateWithPopup(provider);
+      } else {
+        await _ensureGoogleInitialized();
+        final googleUser = await GoogleSignIn.instance.authenticate();
+        final idToken = googleUser.authentication.idToken;
+        if (idToken == null || idToken.isEmpty) {
+          throw AuthException(
+            'Google re-authentication failed.',
+            code: 'reauthentication-failed',
+          );
+        }
+        await user.reauthenticateWithCredential(
+          GoogleAuthProvider.credential(idToken: idToken),
+        );
+      }
+      return;
+    }
+
+    throw AuthException(
+      'Sign in again before deleting this account.',
+      code: 'unsupported-provider',
+    );
   }
 
   Future<void> _seedUser(UserProfile profile) async {
@@ -279,6 +370,8 @@ class AuthRepository {
         return 'Invalid email address';
       case 'weak-password':
         return 'Password is too weak';
+      case 'requires-recent-login':
+        return 'Please sign in again before continuing';
       case 'user-not-found':
       case 'wrong-password':
       case 'invalid-credential':

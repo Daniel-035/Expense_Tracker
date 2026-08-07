@@ -45,12 +45,14 @@ class DefaultFirebaseOptions {
     storageBucket: 'expense-tracker-70365.firebasestorage.app',
   );
 
+  /// iOS Firebase app is not registered yet. Release builds refuse placeholder
+  /// keys (see [main.dart]) instead of falling back to demo mode.
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'YOUR_IOS_API_KEY',
     appId: '1:000000000000:ios:0000000000000000000000',
     messagingSenderId: '000000000000',
     projectId: 'expense-tracker-70365',
-    storageBucket: 'expense-tracker-70365.appspot.com',
+    storageBucket: 'expense-tracker-70365.firebasestorage.app',
     iosBundleId: 'com.ledgerone.ledgerone',
   );
 }

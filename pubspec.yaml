@@ -42,7 +42,7 @@ dependencies:
   firebase_storage: ^13.4.5
   firebase_messaging: ^16.4.3
   firebase_analytics: ^12.4.5
-  firebase_crashlytics: ^5.2.6
+  firebase_crashlytics: ^5.2.7
   google_sign_in: ^7.2.0
   fl_chart: ^1.2.0
   intl: 0.20.2
@@ -64,6 +64,7 @@ dependencies:
   path_provider: ^2.1.6
   google_generative_ai: ^0.4.7
   firebase_ai: ^3.15.0
+  cloud_functions: ^6.3.6
 
 dev_dependencies:
   flutter_test:

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../../../../core/errors/app_exception.dart';
 import '../../../../core/providers/app_providers.dart';
 import '../../../../core/l10n/app_l10n.dart';
 import '../../../../core/utils/auth_actions.dart';
@@ -160,42 +161,7 @@ class SettingsScreen extends ConsumerWidget {
                   : 'Synced automatically via Firebase',
             ),
           ),
-          ListTile(
-            leading: Icon(
-              Icons.delete_forever,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            title: Text(
-              l10n.deleteAccount,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            onTap: () async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: Text(l10n.deleteAccount),
-                  content: Text(
-                    l10n.isHindi
-                        ? 'यह आपके LedgerOne डेटा को स्थायी रूप से हटा देता है।'
-                        : 'This permanently removes your LedgerOne data.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: Text(l10n.cancel),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: Text(l10n.delete),
-                    ),
-                  ],
-                ),
-              );
-              if (ok == true) {
-                await ref.read(authRepositoryProvider).deleteAccount();
-              }
-            },
-          ),
+          _DeleteAccountTile(backend: backend, l10n: l10n),
           ListTile(
             leading: const Icon(Icons.logout),
             title: Text(l10n.logout),
@@ -244,4 +210,147 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _DeleteAccountTile extends ConsumerStatefulWidget {
+  const _DeleteAccountTile({required this.backend, required this.l10n});
+
+  final AppBackend backend;
+  final AppL10n l10n;
+
+  @override
+  ConsumerState<_DeleteAccountTile> createState() =>
+      _DeleteAccountTileState();
+}
+
+class _DeleteAccountTileState extends ConsumerState<_DeleteAccountTile> {
+  bool _deleting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final errorColor = Theme.of(context).colorScheme.error;
+    return ListTile(
+      leading: Icon(Icons.delete_forever, color: errorColor),
+      title: Text(
+        widget.l10n.deleteAccount,
+        style: TextStyle(color: errorColor),
+      ),
+      subtitle: Text(
+        widget.backend.isDemo
+            ? 'Clears all demo data stored on this device'
+            : 'Permanently deletes Firebase data, uploaded files, and sign-in',
+      ),
+      trailing: _deleting
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.4),
+            )
+          : null,
+      enabled: !_deleting,
+      onTap: _deleting ? null : _confirmAndDelete,
+    );
+  }
+
+  Future<void> _confirmAndDelete() async {
+    final phraseController = TextEditingController();
+    final passwordController = TextEditingController();
+    final requiresPassword =
+        !widget.backend.isDemo &&
+        (widget.backend.auth?.currentUser?.providerData.any(
+              (provider) => provider.providerId == 'password',
+            ) ??
+            false);
+
+    final confirmation = await showDialog<_DeleteConfirmation>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final confirmed = phraseController.text.trim() == 'DELETE';
+            return AlertDialog(
+              title: Text(widget.l10n.deleteAccount),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.l10n.isHindi
+                          ? 'यह आपके सभी LedgerOne डेटा, रसीदें और साइन-इन को स्थायी रूप से हटा देता है।'
+                          : 'This permanently deletes all LedgerOne data, receipts, and sign-in access.',
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: phraseController,
+                      decoration: const InputDecoration(
+                        labelText: 'Type DELETE to confirm',
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    if (requiresPassword) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        autofillHints: const [AutofillHints.password],
+                        decoration: const InputDecoration(
+                          labelText: 'Current password',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(widget.l10n.cancel),
+                ),
+                FilledButton(
+                  onPressed: confirmed
+                      ? () => Navigator.pop(
+                          dialogContext,
+                          _DeleteConfirmation(passwordController.text),
+                        )
+                      : null,
+                  child: Text(widget.l10n.delete),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    phraseController.dispose();
+    passwordController.dispose();
+    if (confirmation == null || !mounted) return;
+
+    setState(() => _deleting = true);
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .deleteAccount(password: confirmation.password);
+    } on AppException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Account deletion failed: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+}
+
+class _DeleteConfirmation {
+  const _DeleteConfirmation(this.password);
+
+  final String password;
 }

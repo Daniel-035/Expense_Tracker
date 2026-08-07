@@ -6,6 +6,10 @@
     "rules": "firebase/storage.rules",
     "bucket": "expense-tracker-70365.firebasestorage.app"
   },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs22"
+  },
   "hosting": {
     "public": "build/web",
     "ignore": [
