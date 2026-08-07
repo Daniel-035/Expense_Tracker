@@ -26,7 +26,7 @@ Future<void> main() async {
     );
 
     try {
-      // Web App Check for Firebase AI Logic uses reCAPTCHA Enterprise.
+      // Firebase Hosting is registered with a score-based Enterprise key.
       await FirebaseAppCheck.instance.activate(
         providerWeb: ReCaptchaEnterpriseProvider(
           DefaultFirebaseOptions.webRecaptchaSiteKey,
@@ -70,9 +70,7 @@ Future<void> main() async {
 
   runApp(
     ProviderScope(
-      overrides: [
-        appBackendProvider.overrideWithValue(backend),
-      ],
+      overrides: [appBackendProvider.overrideWithValue(backend)],
       child: const LedgerOneApp(),
     ),
   );

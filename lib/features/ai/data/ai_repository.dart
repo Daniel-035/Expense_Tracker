@@ -58,6 +58,7 @@ RULES:
 /// Optional unrestricted key from Google AI Studio:
 /// `flutter build web --dart-define=GEMINI_API_KEY=...`
 const _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
+const _aiModelName = 'gemini-3.6-flash';
 
 class AiRepository {
   AiRepository(this._ref);
@@ -77,7 +78,7 @@ class AiRepository {
           appCheck: FirebaseAppCheck.instance,
           useLimitedUseAppCheckTokens: true,
         ).generativeModel(
-          model: 'gemini-2.0-flash',
+          model: _aiModelName,
           systemInstruction: Content.system(_softwareKnowledge),
           tools: [
             Tool.functionDeclarations([
@@ -106,7 +107,7 @@ class AiRepository {
 
   gai.GenerativeModel _ensureDirectModel() {
     _directModel ??= gai.GenerativeModel(
-      model: 'gemini-2.0-flash',
+      model: _aiModelName,
       apiKey: _geminiApiKey,
       systemInstruction: gai.Content.system(_softwareKnowledge),
       tools: [
@@ -349,11 +350,21 @@ ${txs.take(15).map((t) => '${t.createdAt.toIso8601String().substring(0, 10)} ${t
       rethrow;
     } catch (e) {
       final msg = e.toString();
+      if (msg.contains('prepayment credits') ||
+          msg.contains('RESOURCE_EXHAUSTED') ||
+          msg.contains('quota') ||
+          msg.contains('429')) {
+        throw DataException(
+          'Cloud AI credits are depleted. Add Gemini API credits in Google AI '
+          'Studio, then try again.',
+        );
+      }
       if (msg.contains('App Check') || msg.contains('app-check')) {
         throw DataException(
           kIsWeb
-              ? 'AI blocked by App Check. In Firebase Console → App Check → APIs, '
-                    'set Firebase AI Logic to Unenforced, then hard-refresh.'
+              ? 'AI verification failed. Refresh the page and try again. If it '
+                    'continues, verify the web reCAPTCHA Enterprise registration in '
+                    'Firebase App Check.'
               : 'AI blocked by App Check. Register a debug token in Firebase '
                     'Console → App Check → your app → Manage debug tokens.',
         );
@@ -361,9 +372,8 @@ ${txs.take(15).map((t) => '${t.createdAt.toIso8601String().substring(0, 10)} ${t
       if (msg.contains('blocked') ||
           msg.contains('generativelanguage.googleapis.com')) {
         throw DataException(
-          'Gemini API is blocked on this API key. Chat now uses Firebase AI Logic — '
-          'hard-refresh. Or create a key at aistudio.google.com and rebuild with '
-          '--dart-define=GEMINI_API_KEY=your_key',
+          'Gemini API access is blocked for this project. Verify Firebase AI '
+          'Logic onboarding and API-key restrictions, then try again.',
         );
       }
       if (msg.contains('API') ||

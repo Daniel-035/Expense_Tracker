@@ -33,9 +33,9 @@ class DefaultFirebaseOptions {
     storageBucket: 'expense-tracker-70365.firebasestorage.app',
   );
 
-  /// App Check reCAPTCHA v3 site key from Firebase Console (web).
+  /// App Check reCAPTCHA Enterprise site key registered for Firebase Hosting.
   static const String webRecaptchaSiteKey =
-      '6LdenGstAAAAABzi5pO4lB8rX6lpqTrvJlObb8Ei';
+      '6LdenGstAAAAAMO53eHoISDn8VEAjPDsp5Mt7Cpb';
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAr952FAa6Fcfun1jNvKPBDXOhpTlRis08',
@@ -43,7 +43,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '293916450719',
     projectId: 'expense-tracker-70365',
     storageBucket: 'expense-tracker-70365.firebasestorage.app',
-  );  
+  );
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'YOUR_IOS_API_KEY',
