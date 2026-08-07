@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -7,11 +9,11 @@ plugins {
     id("com.google.firebase.crashlytics")
 }
 
-val keystoreProperties = java.util.Properties()
+val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasReleaseKeystore = keystorePropertiesFile.exists()
 if (hasReleaseKeystore) {
-    keystorePropertiesFile.inputStream().use(keystoreProperties::load)
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
 val releaseBuildRequested =
