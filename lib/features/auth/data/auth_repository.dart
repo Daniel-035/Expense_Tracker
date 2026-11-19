@@ -1,3 +1,4 @@
+import '../../../core/services/user_bootstrap.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -6,15 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../core/constants/app_constants.dart';
-import '../../../core/constants/default_categories.dart';
 import '../../../core/constants/platform_ids.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/demo_store.dart';
 import '../../../core/utils/rate_limiter.dart';
 import '../../profile/domain/user_profile.dart';
-import '../../settings/domain/app_settings.dart';
-import '../../accounts/domain/account.dart';
 
 class AuthRepository {
   AuthRepository(this._ref);
@@ -33,22 +31,22 @@ class AuthRepository {
         controller.onCancel = sub.cancel;
       });
     }
-    return _backend.auth!.authStateChanges().asyncMap((user) async {
-      if (user == null) return null;
-      final doc = await _backend.firestore!
-          .doc(FirestorePaths.user(user.uid))
-          .get();
-      if (!doc.exists || doc.data() == null) {
-        // Just signed in — profile may still be seeding.
-        return UserProfile(
-          id: user.uid,
-          email: user.email ?? '',
-          name: user.displayName ?? 'User',
-          profilePhoto: user.photoURL,
-          createdAt: DateTime.now(),
-        );
+    final uid = readCurrentUid(_ref);
+    if (uid == null) return Stream.value(null);
+    return _backend.firestore!.doc(FirestorePaths.user(uid)).snapshots().map((
+      doc,
+    ) {
+      if (doc.exists && doc.data() != null) {
+        return UserProfile.fromMap(uid, doc.data()!);
       }
-      return UserProfile.fromMap(user.uid, doc.data()!);
+      final user = _backend.auth!.currentUser!;
+      return UserProfile(
+        id: uid,
+        email: user.email ?? '',
+        name: user.displayName ?? 'User',
+        profilePhoto: user.photoURL,
+        createdAt: DateTime.now(),
+      );
     });
   }
 
@@ -57,7 +55,11 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
-    RateLimiter.instance.ensureAllowed('auth_register', max: 5, windowSeconds: 60);
+    RateLimiter.instance.ensureAllowed(
+      'auth_register',
+      max: 5,
+      windowSeconds: 60,
+    );
     if (_backend.isDemo) {
       return _demo.register(name: name, email: email, password: password);
     }
@@ -96,8 +98,9 @@ class AuthRepository {
         password: password,
       );
       final user = cred.user!;
-      final doc =
-          await _backend.firestore!.doc(FirestorePaths.user(user.uid)).get();
+      final doc = await _backend.firestore!
+          .doc(FirestorePaths.user(user.uid))
+          .get();
       if (!doc.exists) {
         final profile = UserProfile(
           id: user.uid,
@@ -123,7 +126,11 @@ class AuthRepository {
   }
 
   Future<UserProfile> signInWithGoogle() async {
-    RateLimiter.instance.ensureAllowed('auth_google', max: 8, windowSeconds: 60);
+    RateLimiter.instance.ensureAllowed(
+      'auth_google',
+      max: 8,
+      windowSeconds: 60,
+    );
     if (_backend.isDemo) {
       if (_demo.persistedUser?.email == 'google.user@ledgerone.app') {
         return _demo.login('google.user@ledgerone.app', 'Google123');
@@ -157,8 +164,9 @@ class AuthRepository {
       }
 
       final user = cred.user!;
-      final doc =
-          await _backend.firestore!.doc(FirestorePaths.user(user.uid)).get();
+      final doc = await _backend.firestore!
+          .doc(FirestorePaths.user(user.uid))
+          .get();
       if (!doc.exists) {
         final profile = UserProfile(
           id: user.uid,
@@ -204,7 +212,11 @@ class AuthRepository {
   }
 
   Future<void> forgotPassword(String email) async {
-    RateLimiter.instance.ensureAllowed('auth_reset', max: 3, windowSeconds: 120);
+    RateLimiter.instance.ensureAllowed(
+      'auth_reset',
+      max: 3,
+      windowSeconds: 120,
+    );
     if (_backend.isDemo) {
       return;
     }
@@ -257,9 +269,7 @@ class AuthRepository {
         if (!kIsWeb) {
           await _ensureGoogleInitialized();
           await GoogleSignIn.instance.signOut();
-          await FirebaseCrashlytics.instance.log(
-            'Account deletion completed',
-          );
+          await FirebaseCrashlytics.instance.log('Account deletion completed');
         }
       } catch (_) {}
       await _backend.auth!.signOut();
@@ -283,10 +293,7 @@ class AuthRepository {
     }
   }
 
-  Future<void> _reauthenticateForDeletion(
-    User user, {
-    String? password,
-  }) async {
+  Future<void> _reauthenticateForDeletion(User user, {String? password}) async {
     final providerIds = user.providerData
         .map((provider) => provider.providerId)
         .toSet();
@@ -299,10 +306,7 @@ class AuthRepository {
         );
       }
       await user.reauthenticateWithCredential(
-        EmailAuthProvider.credential(
-          email: user.email!,
-          password: password,
-        ),
+        EmailAuthProvider.credential(email: user.email!, password: password),
       );
       return;
     }
@@ -337,29 +341,13 @@ class AuthRepository {
 
   Future<void> _seedUser(UserProfile profile) async {
     final fs = _backend.firestore!;
-    final batch = fs.batch();
-    batch.set(fs.doc(FirestorePaths.user(profile.id)), profile.toMap());
-    batch.set(
-      fs.doc(FirestorePaths.settings(profile.id)),
-      const AppSettings().toMap(),
-    );
-    for (final def in kDefaultCategories) {
-      final ref = fs.collection(FirestorePaths.categories(profile.id)).doc();
-      batch.set(ref, {
-        'name': def.name,
-        'type': def.type,
-        'color': def.color,
-        'icon': def.icon,
-        'isSystem': true,
-      });
-    }
-    final cashRef = fs.collection(FirestorePaths.accounts(profile.id)).doc();
-    batch.set(cashRef, {
-      'accountName': 'Cash',
-      'accountType': AccountType.cash.name,
-      'balance': 0,
+    final profileRef = fs.doc(FirestorePaths.user(profile.id));
+    await fs.runTransaction((txn) async {
+      if (!(await txn.get(profileRef)).exists) {
+        txn.set(profileRef, profile.toMap());
+      }
     });
-    await batch.commit();
+    await _ref.read(userBootstrapProvider).ensureDefaults();
   }
 
   String _mapAuthError(FirebaseAuthException e) {
@@ -401,5 +389,6 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 });
 
 final authStateProvider = StreamProvider<UserProfile?>((ref) {
+  ref.watch(authUidProvider);
   return ref.watch(authRepositoryProvider).watchProfile();
 });

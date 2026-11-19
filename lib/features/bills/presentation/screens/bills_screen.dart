@@ -1,3 +1,9 @@
+import '../../../../core/l10n/app_text.dart';
+import '../../../../shared/widgets/async_action_button.dart';
+import '../../../accounts/data/accounts_repository.dart';
+import '../../../categories/data/categories_repository.dart';
+import '../../../categories/domain/category.dart';
+import '../../domain/bill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -19,7 +25,7 @@ class BillsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bills & subscriptions'),
+        title: const AppText('Bills & subscriptions'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -37,7 +43,7 @@ class BillsScreen extends ConsumerWidget {
               title: 'No bills tracked',
               action: FilledButton(
                 onPressed: () => _showForm(context, ref),
-                child: const Text('Add bill'),
+                child: const AppText('Add bill'),
               ),
             );
           }
@@ -71,15 +77,18 @@ class BillsScreen extends ConsumerWidget {
                         CurrencyFormatter.format(b.amount, currency: currency),
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      TextButton(
-                        onPressed: () =>
-                            ref.read(billsRepositoryProvider).markPaid(b),
-                        child: Text(b.paid ? 'Next cycle' : 'Mark paid'),
+                      AsyncActionButton(
+                        onPressed: b.paid ? null : () => _pay(context, ref, b),
+                        child: Text(b.paid ? 'Paid' : 'Pay bill'),
                       ),
                     ],
                   ),
-                  onLongPress: () =>
-                      ref.read(billsRepositoryProvider).delete(b.id),
+                  onLongPress: () => confirmMutation(
+                    context,
+                    title: 'Delete bill?',
+                    action: () =>
+                        ref.read(billsRepositoryProvider).delete(b.id),
+                  ),
                 ),
               );
             },
@@ -87,6 +96,79 @@ class BillsScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  Future<void> _pay(BuildContext context, WidgetRef ref, Bill bill) async {
+    final accounts = (await ref.read(
+      accountsProvider.future,
+    )).where((a) => !a.archived).toList();
+    final categories = (await ref.read(
+      categoriesProvider.future,
+    )).where((c) => c.type == CategoryType.expense).toList();
+    if (!context.mounted) return;
+    if (accounts.isEmpty || categories.isEmpty) {
+      throw StateError('Add an account and expense category first.');
+    }
+    var account = accounts.first.id;
+    var category = categories.first.id;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModal) => AlertDialog(
+          title: Text('Pay ${bill.title}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const AppText(
+                'Records an expense and updates the account balance.',
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: account,
+                decoration: InputDecoration(
+                  labelText: AppText.translate(context, 'Account'),
+                ),
+                items: accounts
+                    .map(
+                      (a) => DropdownMenuItem(
+                        value: a.id,
+                        child: Text(a.accountName),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setModal(() => account = v!),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: category,
+                decoration: InputDecoration(
+                  labelText: AppText.translate(context, 'Category'),
+                ),
+                items: categories
+                    .map(
+                      (c) => DropdownMenuItem(value: c.id, child: Text(c.name)),
+                    )
+                    .toList(),
+                onChanged: (v) => setModal(() => category = v!),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const AppText('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const AppText('Confirm payment'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirm == true) {
+      await ref
+          .read(billsRepositoryProvider)
+          .markPaid(bill, accountId: account, categoryId: category);
+    }
   }
 
   Future<void> _showForm(BuildContext context, WidgetRef ref) async {
@@ -115,25 +197,30 @@ class BillsScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   TextField(
                     controller: title,
-                    decoration: const InputDecoration(labelText: 'Title'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Title'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: amount,
-                    decoration: const InputDecoration(labelText: 'Amount'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Amount'),
+                    ),
                     validator: Validators.amount,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Repeats monthly'),
+                    title: const AppText('Repeats monthly'),
                     value: recurring,
                     onChanged: (v) => setModal(() => recurring = v),
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Due date'),
+                    title: const AppText('Due date'),
                     subtitle: Text(DateFormat.yMMMd().format(due)),
                     onTap: () async {
                       final d = await showDatePicker(
@@ -145,11 +232,20 @@ class BillsScreen extends ConsumerWidget {
                       if (d != null) setModal(() => due = d);
                     },
                   ),
-                  FilledButton(
+                  AsyncActionButton(
                     onPressed: () async {
                       final amt = double.tryParse(amount.text);
-                      if (title.text.trim().isEmpty || amt == null) return;
-                      await ref.read(billsRepositoryProvider).create(
+                      if (title.text.trim().isEmpty ||
+                          amt == null ||
+                          !amt.isFinite ||
+                          amt <= 0) {
+                        throw StateError(
+                          'Enter a title and valid positive amount.',
+                        );
+                      }
+                      await ref
+                          .read(billsRepositoryProvider)
+                          .create(
                             title: title.text.trim(),
                             amount: amt,
                             dueDate: due,
@@ -157,7 +253,7 @@ class BillsScreen extends ConsumerWidget {
                           );
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
-                    child: const Text('Save'),
+                    child: const AppText('Save'),
                   ),
                 ],
               );

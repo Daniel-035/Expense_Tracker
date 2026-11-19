@@ -1,7 +1,7 @@
+import '../../../../core/l10n/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:local_auth/local_auth.dart';
+import '../../../../core/services/device_lock.dart';
 
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/providers/app_providers.dart';
@@ -20,16 +20,20 @@ class SettingsScreen extends ConsumerWidget {
     final settings =
         ref.watch(settingsProvider).asData?.value ?? const AppSettings();
     final backend = ref.watch(appBackendProvider);
+    final uid = ref.read(appBackendProvider).isDemo
+        ? ref.read(demoStoreProvider).sessionUser?.id
+        : ref.read(appBackendProvider).auth?.currentUser?.uid;
+    final lockAsync = uid == null
+        ? const AsyncData(DeviceLock())
+        : ref.watch(deviceLockProvider(uid));
+    final lock = lockAsync.asData?.value ?? const DeviceLock();
     final l10n = ref.watch(l10nProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settings)),
       body: ListView(
         children: [
-          ListTile(
-            title: Text(l10n.appearance),
-            dense: true,
-          ),
+          ListTile(title: Text(l10n.appearance), dense: true),
           RadioListTile<String>(
             title: Text(l10n.system),
             value: 'system',
@@ -55,39 +59,86 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: (v) => _update(ref, settings.copyWith(theme: v)),
           ),
           const Divider(),
-          SwitchListTile(
-            title: Text(l10n.notifications),
-            value: settings.notifications,
-            onChanged: (v) =>
-                _update(ref, settings.copyWith(notifications: v)),
+          const ListTile(
+            leading: Icon(Icons.notifications_none),
+            title: AppText('Bill reminders'),
+            subtitle: Text(
+              'Upcoming and overdue bills are shown on Home. Push notifications are not enabled.',
+            ),
           ),
           SwitchListTile(
             title: Text(l10n.biometric),
-            subtitle: Text(l10n.biometricHint),
-            value: settings.biometric,
-            onChanged: (v) async {
-              if (v) {
-                final auth = LocalAuthentication();
-                final ok = await auth.authenticate(
-                  localizedReason: l10n.biometricHint,
-                );
-                if (!ok) return;
-              }
-              await _update(ref, settings.copyWith(biometric: v));
-            },
+            subtitle: const Text(
+              'Device authentication on open and after backgrounding',
+            ),
+            value: lock.biometric,
+            onChanged: uid == null || !lockAsync.hasValue
+                ? null
+                : (v) async {
+                    try {
+                      final service = ref.read(deviceLockServiceProvider);
+                      if (!await service.biometric()) return;
+                      await service.write(
+                        uid,
+                        DeviceLock(pin: lock.pin, biometric: v),
+                      );
+                      ref.invalidate(deviceLockProvider(uid));
+                    } catch (error) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('$error')));
+                      }
+                    }
+                  },
           ),
           SwitchListTile(
             title: Text(l10n.pinLock),
-            value: settings.pinEnabled,
-            onChanged: (v) async {
-              if (v) {
-                final pin = await _askPin(context);
-                if (pin == null) return;
-                const storage = FlutterSecureStorage();
-                await storage.write(key: 'ledgerone_pin', value: pin);
-              }
-              await _update(ref, settings.copyWith(pinEnabled: v));
-            },
+            subtitle: const AppText(
+              'Applies only to this account on this device',
+            ),
+            value: lock.pin != null,
+            onChanged: uid == null || !lockAsync.hasValue
+                ? null
+                : (v) async {
+                    try {
+                      if (!v) {
+                        final entered = await _askPin(
+                          context,
+                          title: 'Enter current PIN',
+                        );
+                        if (entered != lock.pin) {
+                          throw StateError('Incorrect PIN.');
+                        }
+                      }
+                      if (!context.mounted) return;
+                      final pin = v ? await _askPin(context) : null;
+                      if (v && pin == null) return;
+                      if (v) {
+                        if (!context.mounted) return;
+                        final repeated = await _askPin(
+                          context,
+                          title: 'Confirm PIN',
+                        );
+                        if (repeated != pin) {
+                          throw StateError('PINs do not match.');
+                        }
+                      }
+                      await ref
+                          .read(deviceLockServiceProvider)
+                          .write(
+                            uid,
+                            DeviceLock(pin: pin, biometric: lock.biometric),
+                          );
+                      ref.invalidate(deviceLockProvider(uid));
+                    } catch (error) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('$error')));
+                      }
+                    }
+                  },
           ),
           const Divider(),
           ListTile(
@@ -123,7 +174,9 @@ class SettingsScreen extends ConsumerWidget {
           ),
           ListTile(
             title: Text(ref.watch(l10nProvider).currency),
-            subtitle: Text(settings.currency),
+            subtitle: Text(
+              '${settings.currency} - ledger currency; changing it does not convert amounts',
+            ),
             onTap: () async {
               final currencies = ['INR', 'USD', 'EUR', 'GBP'];
               final selected = await showDialog<String>(
@@ -154,11 +207,11 @@ class SettingsScreen extends ConsumerWidget {
           ),
           ListTile(
             leading: const Icon(Icons.cloud_outlined),
-            title: const Text('Backup / sync'),
+            title: const AppText('Backup / sync'),
             subtitle: Text(
               backend.isDemo
                   ? 'Demo mode stores data locally on this device'
-                  : 'Synced automatically via Firebase',
+                  : 'Cloud storage enabled. Posting money changes requires a connection.',
             ),
           ),
           _DeleteAccountTile(backend: backend, l10n: l10n),
@@ -180,35 +233,54 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _update(WidgetRef ref, AppSettings settings) {
-    return ref.read(settingsRepositoryProvider).update(settings);
+  Future<void> _update(WidgetRef ref, AppSettings settings) async {
+    try {
+      await ref.read(settingsRepositoryProvider).update(settings);
+    } catch (error) {
+      if (ref.context.mounted) {
+        ScaffoldMessenger.of(
+          ref.context,
+        ).showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
   }
 
-  Future<String?> _askPin(BuildContext context) async {
+  Future<String?> _askPin(
+    BuildContext context, {
+    String title = 'Set PIN',
+  }) async {
     final controller = TextEditingController();
-    return showDialog<String>(
+    final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Set PIN'),
+        title: Text(title),
         content: TextField(
           controller: controller,
           obscureText: true,
           keyboardType: TextInputType.number,
           maxLength: 6,
-          decoration: const InputDecoration(labelText: '4–6 digit PIN'),
+          decoration: InputDecoration(
+            labelText: AppText.translate(context, '4–6 digit PIN'),
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const AppText('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Save'),
+            onPressed: () {
+              if (RegExp(r'^\d{4,6}$').hasMatch(controller.text)) {
+                Navigator.pop(ctx, controller.text);
+              }
+            },
+            child: const AppText('Save'),
           ),
         ],
       ),
     );
+    controller.dispose();
+    return result;
   }
 }
 
@@ -219,8 +291,7 @@ class _DeleteAccountTile extends ConsumerStatefulWidget {
   final AppL10n l10n;
 
   @override
-  ConsumerState<_DeleteAccountTile> createState() =>
-      _DeleteAccountTileState();
+  ConsumerState<_DeleteAccountTile> createState() => _DeleteAccountTileState();
 }
 
 class _DeleteAccountTileState extends ConsumerState<_DeleteAccountTile> {

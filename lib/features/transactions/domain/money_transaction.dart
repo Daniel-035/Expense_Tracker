@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:equatable/equatable.dart';
 
 enum TransactionType { income, expense, transfer }
@@ -5,6 +6,7 @@ enum TransactionType { income, expense, transfer }
 enum RecurrenceInterval { none, daily, weekly, monthly, yearly }
 
 class MoneyTransaction extends Equatable {
+  static const _unset = Object();
   const MoneyTransaction({
     required this.id,
     required this.accountId,
@@ -43,14 +45,14 @@ class MoneyTransaction extends Equatable {
     String? categoryId,
     double? amount,
     TransactionType? transactionType,
-    String? merchant,
-    String? notes,
-    String? receiptUrl,
-    String? location,
+    Object? merchant = _unset,
+    Object? notes = _unset,
+    Object? receiptUrl = _unset,
+    Object? location = _unset,
     List<String>? tags,
-    String? transferAccountId,
+    Object? transferAccountId = _unset,
     RecurrenceInterval? recurrence,
-    DateTime? nextOccurrence,
+    Object? nextOccurrence = _unset,
     DateTime? createdAt,
   }) {
     return MoneyTransaction(
@@ -59,14 +61,24 @@ class MoneyTransaction extends Equatable {
       categoryId: categoryId ?? this.categoryId,
       amount: amount ?? this.amount,
       transactionType: transactionType ?? this.transactionType,
-      merchant: merchant ?? this.merchant,
-      notes: notes ?? this.notes,
-      receiptUrl: receiptUrl ?? this.receiptUrl,
-      location: location ?? this.location,
+      merchant: identical(merchant, _unset)
+          ? this.merchant
+          : merchant as String?,
+      notes: identical(notes, _unset) ? this.notes : notes as String?,
+      receiptUrl: identical(receiptUrl, _unset)
+          ? this.receiptUrl
+          : receiptUrl as String?,
+      location: identical(location, _unset)
+          ? this.location
+          : location as String?,
       tags: tags ?? this.tags,
-      transferAccountId: transferAccountId ?? this.transferAccountId,
+      transferAccountId: identical(transferAccountId, _unset)
+          ? this.transferAccountId
+          : transferAccountId as String?,
       recurrence: recurrence ?? this.recurrence,
-      nextOccurrence: nextOccurrence ?? this.nextOccurrence,
+      nextOccurrence: identical(nextOccurrence, _unset)
+          ? this.nextOccurrence
+          : nextOccurrence as DateTime?,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -75,6 +87,7 @@ class MoneyTransaction extends Equatable {
     'accountId': accountId,
     'categoryId': categoryId,
     'amount': amount,
+    'amountMinor': Money.minor(amount),
     'transactionType': transactionType.name,
     'merchant': merchant,
     'notes': notes,
@@ -94,7 +107,7 @@ class MoneyTransaction extends Equatable {
       id: id,
       accountId: map['accountId'] as String? ?? '',
       categoryId: map['categoryId'] as String? ?? '',
-      amount: (map['amount'] as num?)?.toDouble() ?? 0,
+      amount: Money.read(map, 'amount'),
       transactionType: TransactionType.values.firstWhere(
         (e) => e.name == typeStr,
         orElse: () => TransactionType.expense,
@@ -127,5 +140,11 @@ class MoneyTransaction extends Equatable {
     merchant,
     notes,
     createdAt,
+    receiptUrl,
+    location,
+    tags,
+    transferAccountId,
+    recurrence,
+    nextOccurrence,
   ];
 }

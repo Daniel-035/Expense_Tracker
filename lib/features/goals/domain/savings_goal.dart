@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:equatable/equatable.dart';
 
 class SavingsGoal extends Equatable {
@@ -20,26 +21,34 @@ class SavingsGoal extends Equatable {
   bool get isComplete => savedAmount >= targetAmount;
 
   Map<String, dynamic> toMap() => {
-        'goalName': goalName,
-        'targetAmount': targetAmount,
-        'savedAmount': savedAmount,
-        'deadline': deadline.toIso8601String(),
-      };
+    'goalName': goalName,
+    'targetAmount': targetAmount,
+    'targetAmountMinor': Money.minor(targetAmount),
+    'savedAmount': savedAmount,
+    'savedAmountMinor': Money.minor(savedAmount),
+    'deadline': deadline.toIso8601String(),
+  };
 
   factory SavingsGoal.fromMap(String id, Map<String, dynamic> map) {
     return SavingsGoal(
       id: id,
       goalName: map['goalName'] as String? ?? '',
-      targetAmount: (map['targetAmount'] as num?)?.toDouble() ?? 0,
-      savedAmount: (map['savedAmount'] as num?)?.toDouble() ?? 0,
-      deadline: DateTime.tryParse(map['deadline'] as String? ?? '') ??
+      targetAmount: Money.read(map, 'targetAmount'),
+      savedAmount: Money.read(map, 'savedAmount'),
+      deadline:
+          DateTime.tryParse(map['deadline'] as String? ?? '') ??
           DateTime.now().add(const Duration(days: 30)),
     );
   }
 
   @override
-  List<Object?> get props =>
-      [id, goalName, targetAmount, savedAmount, deadline];
+  List<Object?> get props => [
+    id,
+    goalName,
+    targetAmount,
+    savedAmount,
+    deadline,
+  ];
 }
 
 class GoalDeposit extends Equatable {
@@ -56,16 +65,18 @@ class GoalDeposit extends Equatable {
   final String? note;
 
   Map<String, dynamic> toMap() => {
-        'amount': amount,
-        'createdAt': createdAt.toIso8601String(),
-        'note': note,
-      };
+    'amount': amount,
+    'amountMinor': Money.minor(amount),
+    'createdAt': createdAt.toIso8601String(),
+    'note': note,
+  };
 
   factory GoalDeposit.fromMap(String id, Map<String, dynamic> map) {
     return GoalDeposit(
       id: id,
-      amount: (map['amount'] as num?)?.toDouble() ?? 0,
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+      amount: Money.read(map, 'amount'),
+      createdAt:
+          DateTime.tryParse(map['createdAt'] as String? ?? '') ??
           DateTime.now(),
       note: map['note'] as String?,
     );

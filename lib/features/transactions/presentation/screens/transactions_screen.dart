@@ -1,3 +1,7 @@
+import '../../../../core/l10n/app_text.dart';
+import '../../../../core/providers/app_providers.dart';
+import '../../../../core/utils/money.dart';
+import '../../../accounts/data/accounts_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,11 +17,27 @@ import '../../data/transactions_repository.dart';
 import '../../domain/money_transaction.dart';
 import '../../../../core/utils/export_actions.dart';
 
-final _searchQueryProvider = StateProvider<String>((ref) => '');
-final _typeFilterProvider = StateProvider<TransactionType?>((ref) => null);
-final _dateFilterProvider = StateProvider<TransactionDateFilter>(
-  (ref) => TransactionDateFilter.currentMonth(),
-);
+final _searchQueryProvider = StateProvider<String>((ref) {
+  ref.watch(authUidProvider);
+  return '';
+});
+final _accountFilterProvider = StateProvider<String?>((ref) {
+  ref.watch(authUidProvider);
+  return null;
+});
+final _categoryFilterProvider = StateProvider<String?>((ref) {
+  ref.watch(authUidProvider);
+  return null;
+});
+
+final _typeFilterProvider = StateProvider<TransactionType?>((ref) {
+  ref.watch(authUidProvider);
+  return null;
+});
+final _dateFilterProvider = StateProvider<TransactionDateFilter>((ref) {
+  ref.watch(authUidProvider);
+  return TransactionDateFilter.currentMonth();
+});
 
 class TransactionsScreen extends ConsumerWidget {
   const TransactionsScreen({super.key});
@@ -28,18 +48,77 @@ class TransactionsScreen extends ConsumerWidget {
     final categories = ref.watch(categoriesProvider).asData?.value ?? const [];
     final currency =
         ref.watch(settingsProvider).asData?.value.currency ?? 'INR';
+    final accounts = ref.watch(accountsProvider).asData?.value ?? [];
+    final accountFilter = ref.watch(_accountFilterProvider);
+    final categoryFilter = ref.watch(_categoryFilterProvider);
     final query = ref.watch(_searchQueryProvider).toLowerCase();
     final typeFilter = ref.watch(_typeFilterProvider);
     final dateFilter = ref.watch(_dateFilterProvider);
 
+    List<MoneyTransaction> currentResults(List<MoneyTransaction> txs) =>
+        txs.where((t) {
+          if (!dateFilter.matches(t.createdAt) ||
+              (typeFilter != null && t.transactionType != typeFilter)) {
+            return false;
+          }
+          if (accountFilter != null &&
+              t.accountId != accountFilter &&
+              t.transferAccountId != accountFilter) {
+            return false;
+          }
+          if (categoryFilter != null && t.categoryId != categoryFilter) {
+            return false;
+          }
+          final category =
+              categories.where((c) => c.id == t.categoryId).firstOrNull?.name ??
+              '';
+          return [
+            t.merchant,
+            t.notes,
+            t.amount.toString(),
+            category,
+            ...t.tags,
+          ].whereType<String>().join(' ').toLowerCase().contains(query);
+        }).toList();
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Activity'),
+        title: const AppText('Activity'),
         actions: [
           IconButton(
             tooltip: 'Export / share',
-            onPressed: () => showExportShareSheet(context, ref),
+            onPressed: !txsAsync.hasValue
+                ? null
+                : () async {
+                    final all = txsAsync.requireValue;
+                    if (!context.mounted) return;
+                    final scope = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => SimpleDialog(
+                        title: const AppText('Export scope'),
+                        children: [
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: Text(
+                              'Current results - ${dateFilter.label} (${currentResults(all).length})',
+                            ),
+                          ),
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: Text('All activity (${all.length})'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (scope == null || !context.mounted) return;
+                    await showExportShareSheet(
+                      context,
+                      ref,
+                      selectedTransactions: scope ? currentResults(all) : all,
+                      scopeLabel: scope ? dateFilter.label : 'All activity',
+                    );
+                  },
             icon: const Icon(Icons.download_outlined),
           ),
         ],
@@ -66,20 +145,72 @@ class TransactionsScreen extends ConsumerWidget {
               },
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: null,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Account'),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: AppText('All accounts'),
+                      ),
+                      ...accounts.map(
+                        (a) => DropdownMenuItem(
+                          value: a.id,
+                          child: Text(a.accountName),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) =>
+                        ref.read(_accountFilterProvider.notifier).state = v,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: null,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Category'),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: AppText('All categories'),
+                      ),
+                      ...categories.map(
+                        (c) =>
+                            DropdownMenuItem(value: c.id, child: Text(c.name)),
+                      ),
+                    ],
+                    onChanged: (v) =>
+                        ref.read(_categoryFilterProvider.notifier).state = v,
+                  ),
+                ),
+              ],
+            ),
+          ),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
                 FilterChip(
-                  label: const Text('All'),
+                  label: const AppText('All'),
                   selected: typeFilter == null,
                   onSelected: (_) =>
                       ref.read(_typeFilterProvider.notifier).state = null,
                 ),
                 const SizedBox(width: 8),
                 FilterChip(
-                  label: const Text('Income'),
+                  label: const AppText('Income'),
                   selected: typeFilter == TransactionType.income,
                   onSelected: (_) =>
                       ref.read(_typeFilterProvider.notifier).state =
@@ -87,7 +218,7 @@ class TransactionsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(width: 8),
                 FilterChip(
-                  label: const Text('Expense'),
+                  label: const AppText('Expense'),
                   selected: typeFilter == TransactionType.expense,
                   onSelected: (_) =>
                       ref.read(_typeFilterProvider.notifier).state =
@@ -95,7 +226,7 @@ class TransactionsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(width: 8),
                 FilterChip(
-                  label: const Text('Transfer'),
+                  label: const AppText('Transfer'),
                   selected: typeFilter == TransactionType.transfer,
                   onSelected: (_) =>
                       ref.read(_typeFilterProvider.notifier).state =
@@ -107,11 +238,14 @@ class TransactionsScreen extends ConsumerWidget {
           Expanded(
             child: txsAsync.when(
               loading: () => const LoadingView(),
-              error: (e, _) => Center(child: Text('$e')),
+              error: (e, _) => Center(
+                child: TextButton(
+                  onPressed: () => ref.invalidate(transactionsProvider),
+                  child: const AppText('Could not load activity. Retry'),
+                ),
+              ),
               data: (txs) {
-                final periodTransactions = txs.where((transaction) {
-                  return dateFilter.matches(transaction.createdAt);
-                }).toList();
+                final periodTransactions = currentResults(txs);
                 final totalIncome = periodTransactions
                     .where(
                       (transaction) =>
@@ -119,7 +253,8 @@ class TransactionsScreen extends ConsumerWidget {
                     )
                     .fold<double>(
                       0,
-                      (total, transaction) => total + transaction.amount,
+                      (total, transaction) =>
+                          Money.add(total, transaction.amount),
                     );
                 final totalExpenses = periodTransactions
                     .where(
@@ -129,21 +264,10 @@ class TransactionsScreen extends ConsumerWidget {
                     )
                     .fold<double>(
                       0,
-                      (total, transaction) => total + transaction.amount,
+                      (total, transaction) =>
+                          Money.add(total, transaction.amount),
                     );
-                final filtered = periodTransactions.where((t) {
-                  if (typeFilter != null && t.transactionType != typeFilter) {
-                    return false;
-                  }
-                  if (query.isEmpty) return true;
-                  final hay = [
-                    t.merchant,
-                    t.notes,
-                    t.amount.toString(),
-                    ...t.tags,
-                  ].whereType<String>().join(' ').toLowerCase();
-                  return hay.contains(query);
-                }).toList();
+                final filtered = periodTransactions;
 
                 return Column(
                   children: [
@@ -195,7 +319,7 @@ class TransactionsScreen extends ConsumerWidget {
                                 100,
                               ),
                               itemCount: filtered.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(height: 10),
                               itemBuilder: (context, i) {
                                 final t = filtered[i];
@@ -301,7 +425,9 @@ class TransactionsScreen extends ConsumerWidget {
                                                         ctx,
                                                       ).colorScheme.error,
                                                     ),
-                                                    title: const Text('Delete'),
+                                                    title: const AppText(
+                                                      'Delete',
+                                                    ),
                                                     onTap: () => Navigator.pop(
                                                       ctx,
                                                       'del',

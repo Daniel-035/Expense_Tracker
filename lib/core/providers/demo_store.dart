@@ -1,3 +1,4 @@
+import '../utils/money.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -335,7 +336,18 @@ class DemoStore {
 
   // ---- Transactions ----
   Future<MoneyTransaction> upsertTransaction(MoneyTransaction tx) async {
+    Money.minor(tx.amount, positive: true);
+    final affected = transactionBalanceDeltas(tx).keys;
+    if (affected.any((id) => accounts.every((a) => a.id != id))) {
+      throw StateError('Account not found.');
+    }
     final existingIdx = transactions.indexWhere((t) => t.id == tx.id);
+    if (existingIdx >= 0 &&
+        transactionBalanceDeltas(
+          transactions[existingIdx],
+        ).keys.any((id) => accounts.every((a) => a.id != id))) {
+      throw StateError('Original account not found.');
+    }
     MoneyTransaction? previous;
     if (existingIdx >= 0) {
       previous = transactions[existingIdx];
@@ -369,7 +381,7 @@ class DemoStore {
       final index = accounts.indexWhere((a) => a.id == entry.key);
       final account = accounts[index];
       accounts[index] = account.copyWith(
-        balance: account.balance + entry.value,
+        balance: Money.add(account.balance, entry.value),
       );
     }
   }
@@ -377,8 +389,9 @@ class DemoStore {
   Future<void> deleteTransaction(String id) async {
     final idx = transactions.indexWhere((t) => t.id == id);
     if (idx < 0) return;
-    final tx = transactions.removeAt(idx);
+    final tx = transactions[idx];
     _applyBalance(tx, reverse: true);
+    transactions.removeAt(idx);
     _recalcBudgets();
     await persist();
     _txController.add(List.unmodifiable(transactions));
@@ -387,29 +400,8 @@ class DemoStore {
   }
 
   void _recalcBudgets() {
-    final now = DateTime.now();
-    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
     for (var i = 0; i < budgets.length; i++) {
-      final b = budgets[i];
-      if (b.monthKey != monthKey && b.period == BudgetPeriod.monthly) continue;
-      final spent = transactions
-          .where(
-            (t) =>
-                t.transactionType == TransactionType.expense &&
-                (b.categoryIds.isEmpty ||
-                    b.categoryIds.contains(t.categoryId)) &&
-                t.createdAt.year == now.year &&
-                t.createdAt.month == now.month,
-          )
-          .fold<double>(0, (sum, t) => sum + t.amount);
-      budgets[i] = Budget(
-        id: b.id,
-        categoryIds: b.categoryIds,
-        amount: b.amount,
-        period: b.period,
-        monthKey: b.monthKey,
-        spent: spent,
-      );
+      budgets[i] = budgets[i].withLiveSpent(transactions);
     }
   }
 
@@ -483,7 +475,7 @@ class DemoStore {
       id: goal.id,
       goalName: goal.goalName,
       targetAmount: goal.targetAmount,
-      savedAmount: goal.savedAmount + amount,
+      savedAmount: Money.add(goal.savedAmount, amount),
       deadline: goal.deadline,
     );
     goals[idx] = updated;

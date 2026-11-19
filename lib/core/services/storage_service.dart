@@ -24,7 +24,11 @@ class StorageService {
 
   /// Picks an image and uploads profile photo. Returns download URL.
   Future<String> uploadProfilePhoto(String uid) async {
-    RateLimiter.instance.ensureAllowed('storage_upload', max: 8, windowSeconds: 60);
+    RateLimiter.instance.ensureAllowed(
+      'storage_upload',
+      max: 8,
+      windowSeconds: 60,
+    );
     final storage = _storage;
     if (storage == null) {
       throw DataException('Storage unavailable in demo mode');
@@ -37,7 +41,7 @@ class StorageService {
       imageQuality: 85,
     );
     if (file == null) {
-      throw DataException('No image selected');
+      throw DataException('Selection cancelled');
     }
 
     final bytes = await file.readAsBytes();
@@ -63,7 +67,11 @@ class StorageService {
     required String uid,
     required String transactionId,
   }) async {
-    RateLimiter.instance.ensureAllowed('storage_upload', max: 8, windowSeconds: 60);
+    RateLimiter.instance.ensureAllowed(
+      'storage_upload',
+      max: 8,
+      windowSeconds: 60,
+    );
     final storage = _storage;
     if (storage == null) {
       throw DataException('Storage unavailable in demo mode');
@@ -75,7 +83,7 @@ class StorageService {
       imageQuality: 80,
     );
     if (file == null) {
-      throw DataException('No image selected');
+      throw DataException('Selection cancelled');
     }
 
     final bytes = await file.readAsBytes();
@@ -83,7 +91,8 @@ class StorageService {
       throw DataException('Receipt must be under 8 MB');
     }
 
-    final id = transactionId.isEmpty ? _uuid.v4() : transactionId;
+    final id =
+        '${transactionId.isEmpty ? "receipt" : transactionId}_${_uuid.v4()}';
     final ref = storage.ref('users/$uid/receipts/$id.jpg');
     try {
       await ref.putData(

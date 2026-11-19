@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/ai/presentation/screens/ai_assistant_screen.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../services/user_bootstrap.dart';
+import '../providers/app_providers.dart';
 import '../../features/analytics/presentation/analytics_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
@@ -35,17 +36,22 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.listen(authStateProvider, (prev, next) {
     final user = next.asData?.value;
     if (user != null) {
-      ref.read(userBootstrapProvider).ensureDefaults();
+      ref.read(userBootstrapProvider).ensureDefaults().catchError((
+        Object error,
+      ) {
+        logBackend('Default setup deferred: $error');
+      });
     }
   });
 
-  return GoRouter(
+  final router = GoRouter(
     navigatorKey: _rootKey,
     initialLocation: '/dashboard',
     refreshListenable: refresh,
     redirect: (context, state) {
       final authAsync = ref.read(authStateProvider);
-      final loggingIn = state.matchedLocation == '/login' ||
+      final loggingIn =
+          state.matchedLocation == '/login' ||
           state.matchedLocation == '/register' ||
           state.matchedLocation == '/forgot-password';
 
@@ -60,17 +66,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/login',
-        pageBuilder: (context, state) => appFadePage(
-          key: state.pageKey,
-          child: const LoginScreen(),
-        ),
+        pageBuilder: (context, state) =>
+            appFadePage(key: state.pageKey, child: const LoginScreen()),
       ),
       GoRoute(
         path: '/register',
-        pageBuilder: (context, state) => appFadePage(
-          key: state.pageKey,
-          child: const RegisterScreen(),
-        ),
+        pageBuilder: (context, state) =>
+            appFadePage(key: state.pageKey, child: const RegisterScreen()),
       ),
       GoRoute(
         path: '/forgot-password',
@@ -85,10 +87,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: '/dashboard',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const DashboardScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const DashboardScreen()),
           ),
           GoRoute(
             path: '/transactions',
@@ -99,10 +99,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/accounts',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const AccountsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const AccountsScreen()),
           ),
           GoRoute(
             path: '/categories',
@@ -113,58 +111,44 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/budgets',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const BudgetsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const BudgetsScreen()),
           ),
           GoRoute(
             path: '/bills',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const BillsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const BillsScreen()),
           ),
           GoRoute(
             path: '/goals',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const GoalsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const GoalsScreen()),
           ),
           GoRoute(
             path: '/analytics',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const AnalyticsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const AnalyticsScreen()),
           ),
           GoRoute(
             path: '/calendar',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const CalendarScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const CalendarScreen()),
           ),
           GoRoute(
             path: '/profile',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const ProfileScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const ProfileScreen()),
           ),
           GoRoute(
             path: '/settings',
-            pageBuilder: (context, state) => appFadePage(
-              key: state.pageKey,
-              child: const SettingsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                appFadePage(key: state.pageKey, child: const SettingsScreen()),
           ),
           GoRoute(
             path: '/ai',
             pageBuilder: (context, state) => appFadePage(
               key: state.pageKey,
-              child: const AiAssistantScreen(),
+              child: AiAssistantScreen(key: ValueKey(readCurrentUid(ref))),
             ),
           ),
         ],
@@ -196,11 +180,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+  ref.onDispose(() {
+    router.dispose();
+    refresh.dispose();
+  });
+  return router;
 });
 
 class _AuthRefresh extends ChangeNotifier {
   _AuthRefresh(Ref ref) {
     // Auto-disposed when routerProvider is disposed.
-    ref.listen(authStateProvider, (_, __) => notifyListeners());
+    ref.listen(authStateProvider, (_, _) => notifyListeners());
   }
 }

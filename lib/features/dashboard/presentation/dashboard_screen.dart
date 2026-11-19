@@ -1,3 +1,6 @@
+import '../../../core/l10n/app_text.dart';
+import '../../../core/utils/money.dart';
+import '../../../shared/widgets/data_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +24,23 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final status = dataStatus(
+      [
+        ref.watch(accountsProvider),
+        ref.watch(transactionsProvider),
+        ref.watch(liveBudgetsProvider),
+        ref.watch(billsProvider),
+        ref.watch(goalsProvider),
+      ],
+      () {
+        ref.invalidate(accountsProvider);
+        ref.invalidate(transactionsProvider);
+        ref.invalidate(liveBudgetsProvider);
+        ref.invalidate(billsProvider);
+        ref.invalidate(goalsProvider);
+      },
+    );
+    if (status != null) return status;
     final profile = ref.watch(authStateProvider).asData?.value;
     final accounts = ref.watch(accountsProvider).asData?.value ?? const [];
     final txs = ref.watch(transactionsProvider).asData?.value ?? const [];
@@ -31,24 +51,27 @@ class DashboardScreen extends ConsumerWidget {
         ref.watch(settingsProvider).asData?.value.currency ?? 'INR';
 
     final now = DateTime.now();
-    final balance = accounts.fold<double>(0, (s, a) => s + a.balance);
+    final balance = accounts.fold<double>(0, (s, a) => Money.add(s, a.balance));
     final monthTx = txs.where(
       (t) => t.createdAt.year == now.year && t.createdAt.month == now.month,
     );
     final income = monthTx
         .where((t) => t.transactionType == TransactionType.income)
-        .fold<double>(0, (s, t) => s + t.amount);
+        .fold<double>(0, (s, t) => Money.add(s, t.amount));
     final expense = monthTx
         .where((t) => t.transactionType == TransactionType.expense)
-        .fold<double>(0, (s, t) => s + t.amount);
-    final savings = goals.fold<double>(0, (s, g) => s + g.savedAmount);
+        .fold<double>(0, (s, t) => Money.add(s, t.amount));
+    final savings = goals.fold<double>(
+      0,
+      (s, g) => Money.add(s, g.savedAmount),
+    );
     final upcoming = bills.where((b) => !b.paid).toList()
       ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
     final recent = txs.take(5).toList();
     final budgetProgress = budgets.isEmpty
         ? 0.0
         : budgets.map((b) => b.progress).reduce((a, b) => a + b) /
-            budgets.length;
+              budgets.length;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -56,12 +79,12 @@ class DashboardScreen extends ConsumerWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Dashboard'),
+            const AppText('Dashboard'),
             Text(
               'Hello, ${profile?.name.split(' ').first ?? 'there'}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.slate,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.slate),
             ),
           ],
         ),
@@ -78,7 +101,10 @@ class DashboardScreen extends ConsumerWidget {
         onRefresh: () async {
           ref.invalidate(accountsProvider);
           ref.invalidate(transactionsProvider);
-          await Future<void>.delayed(const Duration(milliseconds: 280));
+          await Future.wait([
+            ref.read(accountsProvider.future),
+            ref.read(transactionsProvider.future),
+          ]);
         },
         child: ListView(
           physics: const BouncingScrollPhysics(
@@ -90,7 +116,9 @@ class DashboardScreen extends ConsumerWidget {
             HeroBalanceCard(
               label: 'Current balance',
               value: CurrencyFormatter.format(balance, currency: currency),
-              subtitle: 'Synced across your devices',
+              subtitle:
+                  ref.watch(transactionSyncProvider).asData?.value ??
+                  'Checking data status...',
             ),
             const SizedBox(height: 14),
             FadeSlideIn(
@@ -100,8 +128,10 @@ class DashboardScreen extends ConsumerWidget {
                   Expanded(
                     child: StatCard(
                       label: 'Monthly income',
-                      value:
-                          CurrencyFormatter.format(income, currency: currency),
+                      value: CurrencyFormatter.format(
+                        income,
+                        currency: currency,
+                      ),
                       icon: Icons.south_west_rounded,
                       color: AppColors.income,
                       onTap: () => context.go('/transactions'),
@@ -111,8 +141,10 @@ class DashboardScreen extends ConsumerWidget {
                   Expanded(
                     child: StatCard(
                       label: 'Monthly expense',
-                      value:
-                          CurrencyFormatter.format(expense, currency: currency),
+                      value: CurrencyFormatter.format(
+                        expense,
+                        currency: currency,
+                      ),
                       icon: Icons.north_east_rounded,
                       color: AppColors.expense,
                       onTap: () => context.go('/transactions'),
@@ -128,9 +160,11 @@ class DashboardScreen extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: StatCard(
-                      label: 'Savings',
-                      value:
-                          CurrencyFormatter.format(savings, currency: currency),
+                      label: 'Goal progress',
+                      value: CurrencyFormatter.format(
+                        savings,
+                        currency: currency,
+                      ),
                       icon: Icons.savings_outlined,
                       color: AppColors.sky,
                       onTap: () => context.go('/goals'),
@@ -148,9 +182,7 @@ class DashboardScreen extends ConsumerWidget {
                             children: [
                               Text(
                                 'Budget usage',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
                                       color: AppColors.slate,
                                       fontWeight: FontWeight.w600,
@@ -170,8 +202,9 @@ class DashboardScreen extends ConsumerWidget {
                                     minHeight: 9,
                                     borderRadius: BorderRadius.circular(8),
                                     color: AppColors.azure,
-                                    backgroundColor:
-                                        AppColors.azure.withValues(alpha: 0.12),
+                                    backgroundColor: AppColors.azure.withValues(
+                                      alpha: 0.12,
+                                    ),
                                   );
                                 },
                               ),
@@ -217,8 +250,8 @@ class DashboardScreen extends ConsumerWidget {
                       expense > income
                           ? 'Expenses exceed income this month. Review discretionary spending.'
                           : income == 0 && expense == 0
-                              ? 'Log your first transaction to unlock insights.'
-                              : 'You are ${CurrencyFormatter.format(income - expense, currency: currency)} ahead this month. Keep it up!',
+                          ? 'Log your first transaction to unlock insights.'
+                          : 'You are ${CurrencyFormatter.format(income - expense, currency: currency)} ahead this month. Keep it up!',
                     ),
                     trailing: const Icon(Icons.chevron_right_rounded),
                   ),
@@ -229,7 +262,7 @@ class DashboardScreen extends ConsumerWidget {
               'Recent transactions',
               trailing: TextButton(
                 onPressed: () => context.go('/transactions'),
-                child: const Text('See all'),
+                child: const AppText('See all'),
               ),
             ),
             if (recent.isEmpty)
@@ -267,12 +300,13 @@ class DashboardScreen extends ConsumerWidget {
                             t.merchant?.isNotEmpty == true
                                 ? t.merchant!
                                 : t.notes?.isNotEmpty == true
-                                    ? t.notes!
-                                    : t.transactionType.name,
+                                ? t.notes!
+                                : t.transactionType.name,
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
-                          subtitle:
-                              Text(DateFormat.yMMMd().format(t.createdAt)),
+                          subtitle: Text(
+                            DateFormat.yMMMd().format(t.createdAt),
+                          ),
                           trailing: Text(
                             '${isIncome ? '+' : '-'}${CurrencyFormatter.format(t.amount, currency: currency)}',
                             style: TextStyle(
@@ -292,7 +326,7 @@ class DashboardScreen extends ConsumerWidget {
               'Upcoming bills',
               trailing: TextButton(
                 onPressed: () => context.go('/bills'),
-                child: const Text('Manage'),
+                child: const AppText('Manage'),
               ),
             ),
             if (upcoming.isEmpty)
@@ -301,7 +335,9 @@ class DashboardScreen extends ConsumerWidget {
                 style: TextStyle(color: AppColors.slate),
               )
             else
-              ...upcoming.take(3).map(
+              ...upcoming
+                  .take(3)
+                  .map(
                     (b) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: TapScale(
@@ -317,8 +353,9 @@ class DashboardScreen extends ConsumerWidget {
                             ),
                             title: Text(
                               b.title,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             subtitle: Text(
                               'Due ${DateFormat.yMMMd().format(b.dueDate)}',
@@ -328,8 +365,9 @@ class DashboardScreen extends ConsumerWidget {
                                 b.amount,
                                 currency: currency,
                               ),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ),

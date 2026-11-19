@@ -1,3 +1,4 @@
+import '../../core/l10n/app_text.dart';
 import 'package:flutter/material.dart';
 
 import '../filters/transaction_date_filter.dart';
@@ -48,15 +49,18 @@ class TransactionDateFilterBar extends StatelessWidget {
           child: SegmentedButton<DateFilterPreset>(
             showSelectedIcon: false,
             segments: const [
-              ButtonSegment(value: DateFilterPreset.day, label: Text('Day')),
+              ButtonSegment(value: DateFilterPreset.day, label: AppText('Day')),
               ButtonSegment(
                 value: DateFilterPreset.month,
-                label: Text('Month'),
+                label: AppText('Month'),
               ),
-              ButtonSegment(value: DateFilterPreset.year, label: Text('Year')),
+              ButtonSegment(
+                value: DateFilterPreset.year,
+                label: AppText('Year'),
+              ),
               ButtonSegment(
                 value: DateFilterPreset.custom,
-                label: Text('Dates'),
+                label: AppText('Dates'),
                 icon: Icon(Icons.date_range_outlined),
               ),
             ],

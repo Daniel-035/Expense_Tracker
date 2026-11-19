@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -26,9 +27,11 @@ class GoalsRepository {
     return backend.firestore!
         .collection(FirestorePaths.goals(uid))
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => SavingsGoal.fromMap(d.id, d.data()))
-            .toList());
+        .map(
+          (snap) => snap.docs
+              .map((d) => SavingsGoal.fromMap(d.id, d.data()))
+              .toList(),
+        );
   }
 
   Future<SavingsGoal> create({
@@ -36,6 +39,8 @@ class GoalsRepository {
     required double target,
     required DateTime deadline,
   }) async {
+    Money.name(name);
+    Money.minor(target, positive: true);
     final goal = SavingsGoal(
       id: _uuid.v4(),
       goalName: name,
@@ -60,13 +65,12 @@ class GoalsRepository {
     required double amount,
     String? note,
   }) async {
+    Money.minor(amount, positive: true);
     final backend = _ref.read(appBackendProvider);
     if (backend.isDemo) {
-      return _ref.read(demoStoreProvider).depositToGoal(
-            goalId: goalId,
-            amount: amount,
-            note: note,
-          );
+      return _ref
+          .read(demoStoreProvider)
+          .depositToGoal(goalId: goalId, amount: amount, note: note);
     }
     final uid = backend.auth!.currentUser!.uid;
     final fs = backend.firestore!;
@@ -78,11 +82,13 @@ class GoalsRepository {
         id: goal.id,
         goalName: goal.goalName,
         targetAmount: goal.targetAmount,
-        savedAmount: goal.savedAmount + amount,
+        savedAmount: Money.add(goal.savedAmount, amount),
         deadline: goal.deadline,
       );
       txn.update(goalRef, updated.toMap());
-      final depRef = fs.collection(FirestorePaths.goalDeposits(uid, goalId)).doc();
+      final depRef = fs
+          .collection(FirestorePaths.goalDeposits(uid, goalId))
+          .doc();
       txn.set(
         depRef,
         GoalDeposit(

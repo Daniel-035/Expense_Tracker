@@ -1,3 +1,5 @@
+import '../../../../shared/widgets/async_action_button.dart';
+import '../../../../core/l10n/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,7 +16,7 @@ class CategoriesScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Categories'),
+        title: const AppText('Categories'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -26,10 +28,12 @@ class CategoriesScreen extends ConsumerWidget {
         loading: () => const LoadingView(),
         error: (e, _) => Center(child: Text('$e')),
         data: (cats) {
-          final income =
-              cats.where((c) => c.type == CategoryType.income).toList();
-          final expense =
-              cats.where((c) => c.type == CategoryType.expense).toList();
+          final income = cats
+              .where((c) => c.type == CategoryType.income)
+              .toList();
+          final expense = cats
+              .where((c) => c.type == CategoryType.expense)
+              .toList();
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -57,8 +61,12 @@ class CategoriesScreen extends ConsumerWidget {
             ? null
             : IconButton(
                 icon: const Icon(Icons.delete_outline),
-                onPressed: () =>
-                    ref.read(categoriesRepositoryProvider).delete(c.id),
+                onPressed: () => confirmMutation(
+                  context,
+                  title: 'Delete category?',
+                  action: () =>
+                      ref.read(categoriesRepositoryProvider).delete(c.id),
+                ),
               ),
         onTap: c.isSystem ? null : () => _showForm(context, ref, category: c),
       ),
@@ -96,36 +104,42 @@ class CategoriesScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   TextField(
                     controller: name,
-                    decoration: const InputDecoration(labelText: 'Name'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Name'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   SegmentedButton<CategoryType>(
                     segments: const [
                       ButtonSegment(
                         value: CategoryType.expense,
-                        label: Text('Expense'),
+                        label: AppText('Expense'),
                       ),
                       ButtonSegment(
                         value: CategoryType.income,
-                        label: Text('Income'),
+                        label: AppText('Income'),
                       ),
                     ],
                     selected: {type},
                     onSelectionChanged: (s) => setModal(() => type = s.first),
                   ),
                   const SizedBox(height: 16),
-                  FilledButton(
+                  AsyncActionButton(
                     onPressed: () async {
                       if (name.text.trim().isEmpty) return;
                       if (category == null) {
-                        await ref.read(categoriesRepositoryProvider).create(
+                        await ref
+                            .read(categoriesRepositoryProvider)
+                            .create(
                               name: name.text.trim(),
                               type: type,
                               color: 0xFF0D7377,
                               icon: 'category',
                             );
                       } else {
-                        await ref.read(categoriesRepositoryProvider).update(
+                        await ref
+                            .read(categoriesRepositoryProvider)
+                            .update(
                               Category(
                                 id: category.id,
                                 name: name.text.trim(),
@@ -138,7 +152,7 @@ class CategoriesScreen extends ConsumerWidget {
                       }
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
-                    child: const Text('Save'),
+                    child: const AppText('Save'),
                   ),
                 ],
               );

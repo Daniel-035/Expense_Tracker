@@ -1,39 +1,125 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isOwner(uid) {
-      return request.auth != null && request.auth.uid == uid;
+    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function name(value) { return value is string && value.size() > 0 && value.size() <= 120; }
+    function money(data, key, positive) {
+      let value = data[key];
+      let minor = data.get(key + 'Minor', 0);
+      return value is number && value >= -90000000000 && value <= 90000000000
+        && (!positive || value > 0)
+        && (!(key + 'Minor' in data) || (minor is int && minor >= -9000000000000 && minor <= 9000000000000
+          && value - minor / 100.0 < 0.0000001 && minor / 100.0 - value < 0.0000001));
     }
-
-    match /users/{userId} {
-      allow read, write: if isOwner(userId);
-
-      match /accounts/{docId} {
-        allow read, write: if isOwner(userId);
+    function text(data, key, max) { return data.get(key, null) == null || (data[key] is string && data[key].size() <= max); }
+    function account(uid, id) { return id is string && id.size() > 0 && exists(/databases/$(database)/documents/users/$(uid)/accounts/$(id)); }
+    function minor(d, key) { return d.get(key + 'Minor', d.get(key, 0) * 100); }
+    function postingInfo(t) {
+      let type = t.get('transactionType', 'none');
+      return [t.get('accountId', ''), type == 'transfer' ? t.transferAccountId : '',
+        type == 'income' ? minor(t, 'amount') : -minor(t, 'amount')];
+    }
+    function delta(t, id) { return t[0] == id ? t[2] : (t[1] == id ? -t[2] : 0); }
+    function close(a, b) { return a - b < 0.000001 && b - a < 0.000001; }
+    function postedAccount(uid, id, op, before, after) {
+      let path = /databases/$(database)/documents/users/$(uid)/accounts/$(id);
+      let change = delta(after, id) - delta(before, id);
+      return id == '' || (close(minor(getAfter(path).data, 'balance') - minor(get(path).data, 'balance'), change)
+        && (change == 0 || getAfter(path).data.lastTransactionId == op));
+    }
+    function posted(uid, op, beforeData, afterData) {
+      let before = postingInfo(beforeData);
+      let after = postingInfo(afterData);
+      return postedAccount(uid, before[0], op, before, after)
+        && postedAccount(uid, before[1], op, before, after)
+        && postedAccount(uid, after[0], op, before, after)
+        && postedAccount(uid, after[1], op, before, after);
+    }
+    function balancePosting(uid, accountId, op) {
+      let txPath = /databases/$(database)/documents/users/$(uid)/transactions/$(op);
+      let before = exists(txPath) ? get(txPath).data : {};
+      let after = existsAfter(txPath) ? getAfter(txPath).data : {};
+      // Transaction rules verify every affected balance. Here require that
+      // this write belongs to an actual change of a referenced transaction.
+      return before != after && (before.get('accountId', '') == accountId || before.get('transferAccountId', '') == accountId
+        || after.get('accountId', '') == accountId || after.get('transferAccountId', '') == accountId);
+    }
+    function transaction(uid, d) {
+      return d.keys().hasOnly(['accountId', 'categoryId', 'amount', 'amountMinor', 'transactionType', 'merchant', 'notes', 'receiptUrl', 'location', 'tags', 'transferAccountId', 'recurrence', 'nextOccurrence', 'createdAt', 'billId', 'billDueDate'])
+        && money(d, 'amount', true) && account(uid, d.accountId)
+        && d.transactionType in ['income', 'expense', 'transfer']
+        && d.createdAt is string && d.createdAt.size() <= 40
+        && d.recurrence in ['none', 'daily', 'weekly', 'monthly', 'yearly']
+        && text(d, 'merchant', 300) && text(d, 'notes', 2000) && text(d, 'location', 300) && text(d, 'receiptUrl', 2048)
+        && d.tags is list && d.tags.size() <= 20
+        && (d.transactionType == 'transfer'
+          ? account(uid, d.transferAccountId) && d.transferAccountId != d.accountId
+          : d.categoryId is string && exists(/databases/$(database)/documents/users/$(uid)/categories/$(d.categoryId))
+            && get(/databases/$(database)/documents/users/$(uid)/categories/$(d.categoryId)).data.type == d.transactionType);
+    }
+    match /users/{uid} {
+      allow read: if owner(uid);
+      allow create, update: if owner(uid) && name(request.resource.data.name)
+        && request.resource.data.email is string && request.resource.data.email.size() <= 320
+        && text(request.resource.data, 'phone', 40) && text(request.resource.data, 'profilePhoto', 2048);
+      allow delete: if false; // account deletion is server-managed
+      match /accounts/{id} {
+        allow read: if owner(uid);
+        allow create, update: if owner(uid) && name(request.resource.data.accountName)
+          && request.resource.data.accountType in ['cash', 'bank', 'creditCard', 'upi', 'wallet', 'savings', 'investment']
+          && money(request.resource.data, 'balance', false)
+          && request.resource.data.get('archived', false) is bool
+          && request.resource.data.keys().hasOnly(['accountName', 'accountType', 'balance', 'balanceMinor', 'archived', 'lastTransactionId'])
+          && (resource == null || close(minor(request.resource.data, 'balance'), minor(resource.data, 'balance'))
+            || (request.resource.data.get('lastTransactionId', '') is string && request.resource.data.get('lastTransactionId', '').size() > 0
+              && balancePosting(uid, id, request.resource.data.lastTransactionId)));
+        allow delete: if false; // archive keeps ledger references intact
       }
-      match /categories/{docId} {
-        allow read, write: if isOwner(userId);
+      match /categories/{id} {
+        allow read: if owner(uid);
+        allow create, update: if owner(uid) && name(request.resource.data.name)
+          && request.resource.data.type in ['income', 'expense']
+          && request.resource.data.color is int && request.resource.data.icon is string
+          && request.resource.data.isSystem is bool;
+        allow delete: if owner(uid) && resource.data.isSystem == false;
       }
-      match /transactions/{docId} {
-        allow read, write: if isOwner(userId);
+      match /transactions/{id} {
+        allow read: if owner(uid);
+        allow create: if owner(uid) && transaction(uid, request.resource.data) && posted(uid, id, {}, request.resource.data);
+        allow update: if owner(uid) && transaction(uid, request.resource.data) && posted(uid, id, resource.data, request.resource.data);
+        allow delete: if owner(uid) && posted(uid, id, resource.data, {});
       }
-      match /budgets/{docId} {
-        allow read, write: if isOwner(userId);
+      match /budgets/{id} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid) && money(request.resource.data, 'amount', true)
+          && money(request.resource.data, 'spent', false)
+          && request.resource.data.categoryIds is list && request.resource.data.categoryIds.size() <= 100
+          && request.resource.data.period in ['weekly', 'monthly'] && request.resource.data.monthKey is string;
       }
-      match /goals/{docId} {
-        allow read, write: if isOwner(userId);
+      match /goals/{id} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid) && name(request.resource.data.goalName)
+          && money(request.resource.data, 'targetAmount', true) && money(request.resource.data, 'savedAmount', false)
+          && request.resource.data.savedAmount >= 0 && request.resource.data.deadline is string;
         match /deposits/{depositId} {
-          allow read, write: if isOwner(userId);
+          allow read: if owner(uid);
+          allow create: if owner(uid) && existsAfter(/databases/$(database)/documents/users/$(uid)/goals/$(id))
+            && money(request.resource.data, 'amount', true) && request.resource.data.createdAt is string && text(request.resource.data, 'note', 2000);
+          allow update, delete: if false; // server cleanup removes deposit history
         }
       }
-      match /bills/{docId} {
-        allow read, write: if isOwner(userId);
+      match /bills/{id} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid) && name(request.resource.data.title) && money(request.resource.data, 'amount', true)
+          && request.resource.data.dueDate is string && request.resource.data.recurring is bool && request.resource.data.paid is bool
+          && request.resource.data.get('billingDay', 1) is int && request.resource.data.get('billingDay', 1) >= 1 && request.resource.data.get('billingDay', 1) <= 31;
       }
-      match /notifications/{docId} {
-        allow read, write: if isOwner(userId);
-      }
-      match /settings/{docId} {
-        allow read, write: if isOwner(userId);
+      match /notifications/{id} { allow read: if owner(uid); }
+      match /settings/{id} {
+        allow read: if owner(uid);
+        allow create, update: if owner(uid) && request.resource.data.theme in ['system', 'light', 'dark']
+          && request.resource.data.language in ['en', 'hi'] && request.resource.data.currency in ['INR', 'USD', 'EUR', 'GBP']
+          && request.resource.data.biometric is bool && request.resource.data.pinEnabled is bool && request.resource.data.notifications is bool;
       }
     }
   }

@@ -11,14 +11,16 @@ service firebase.storage {
 
     match /users/{userId}/profile/{fileName} {
       allow read: if isOwner(userId);
-      allow write: if isOwner(userId)
+      allow delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
                    && isImage()
                    && request.resource.size < 5 * 1024 * 1024;
     }
 
     match /users/{userId}/receipts/{fileName} {
       allow read: if isOwner(userId);
-      allow write: if isOwner(userId)
+      allow delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
                    && isImage()
                    && request.resource.size < 8 * 1024 * 1024;
     }

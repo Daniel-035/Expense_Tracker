@@ -1,3 +1,4 @@
+import {onDocumentDeleted, onDocumentUpdated} from "firebase-functions/v2/firestore";
 import {initializeApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
@@ -57,5 +58,55 @@ export const deleteUserAccount = onCall(
         "Could not completely delete the account. Please try again.",
       );
     }
+  },
+);
+
+
+// Deleting a parent document does not delete its subcollections.
+export const cleanupDeletedGoal = onDocumentDeleted(
+  {document: "users/{uid}/goals/{goalId}", region, retry: true},
+  async (event) => {
+    if (!event.data) return;
+    const ref = event.data.ref;
+    // A restored goal must keep its new history.
+    if ((await ref.get()).exists) return;
+    await getFirestore().recursiveDelete(ref.collection("deposits"));
+  },
+);
+
+export const cleanupDeletedTransactionReceipt = onDocumentDeleted(
+  {document: "users/{uid}/transactions/{transactionId}", region, retry: true},
+  async (event) => {
+    if (!event.data) return;
+    if ((await event.data.ref.get()).exists) return;
+    const path = receiptPath(event.data.data().receiptUrl, event.params.uid);
+    if (path) await getStorage().bucket(bucketName).file(path).delete({ignoreNotFound: true});
+  },
+);
+
+
+function receiptPath(raw: unknown, uid: string): string | null {
+  if (typeof raw !== "string") return null;
+  try {
+    const url = new URL(raw);
+    if (url.hostname !== "firebasestorage.googleapis.com") return null;
+    const prefix = `/v0/b/${bucketName}/o/`;
+    if (!url.pathname.startsWith(prefix)) return null;
+    const path = decodeURIComponent(url.pathname.slice(prefix.length));
+    return path.startsWith(`users/${uid}/receipts/`) ? path : null;
+  } catch { return null; }
+}
+
+export const cleanupReplacedReceipt = onDocumentUpdated(
+  {document: "users/{uid}/transactions/{transactionId}", region, retry: true},
+  async (event) => {
+    if (!event.data) return;
+    const before = event.data.before.data().receiptUrl;
+    const after = event.data.after.data().receiptUrl;
+    if (before === after) return;
+    const latest = await event.data.after.ref.get();
+    if (latest.data()?.receiptUrl === before) return;
+    const path = receiptPath(before, event.params.uid);
+    if (path) await getStorage().bucket(bucketName).file(path).delete({ignoreNotFound: true});
   },
 );

@@ -40,7 +40,10 @@ String buildTransactionsCsv({
   return buf.toString();
 }
 
-String _csv(String value) => '"${value.replaceAll('"', '""')}"';
+String _csv(String value) {
+  final safe = RegExp(r'^[\s]*[=+@-]').hasMatch(value) ? "'$value" : value;
+  return '"${safe.replaceAll('"', '""')}"';
+}
 
 /// Saves activity CSV to a downloadable file (web download / mobile save).
 Future<String> downloadTransactionsCsv({

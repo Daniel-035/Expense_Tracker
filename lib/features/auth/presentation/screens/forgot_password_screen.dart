@@ -1,3 +1,4 @@
+import '../../../../core/l10n/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -48,7 +49,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Reset password')),
+      appBar: AppBar(title: const AppText('Reset password')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
@@ -81,12 +82,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     ),
                   FilledButton(
                     onPressed: _loading ? null : _submit,
-                    child: const Text('Send reset link'),
+                    child: const AppText('Send reset link'),
                   ),
                 ],
                 TextButton(
                   onPressed: () => context.go('/login'),
-                  child: const Text('Back to sign in'),
+                  child: const AppText('Back to sign in'),
                 ),
               ],
             ),

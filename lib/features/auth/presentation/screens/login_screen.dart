@@ -1,3 +1,4 @@
+import '../../../../core/l10n/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,10 +39,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      await ref.read(authRepositoryProvider).login(
-            email: _email.text,
-            password: _password.text,
-          );
+      await ref
+          .read(authRepositoryProvider)
+          .login(email: _email.text, password: _password.text);
     } catch (e) {
       setState(() => _error = _friendlyError(e));
     } finally {
@@ -103,15 +103,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(22),
                                 gradient: const LinearGradient(
-                                  colors: [
-                                    AppColors.azure,
-                                    AppColors.sky,
-                                  ],
+                                  colors: [AppColors.azure, AppColors.sky],
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color:
-                                        AppColors.azure.withValues(alpha: 0.35),
+                                    color: AppColors.azure.withValues(
+                                      alpha: 0.35,
+                                    ),
                                     blurRadius: 20,
                                     offset: const Offset(0, 10),
                                   ),
@@ -127,9 +125,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             Text(
                               'LedgerOne',
                               textAlign: TextAlign.center,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineLarge
+                              style: Theme.of(context).textTheme.headlineLarge
                                   ?.copyWith(
                                     fontWeight: FontWeight.w800,
                                     color: AppColors.azure,
@@ -140,9 +136,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             Text(
                               'Bright, clear money tracking — anywhere you go',
                               textAlign: TextAlign.center,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(color: AppColors.slate),
                             ),
                           ],
@@ -152,9 +146,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 12),
                         const Chip(
                           avatar: Icon(Icons.info_outline, size: 16),
-                          label: Text(
-                            'Demo mode — data stays on this device',
-                          ),
+                          label: Text('Demo mode — data stays on this device'),
                         ),
                       ],
                       const SizedBox(height: 28),
@@ -198,7 +190,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: () => context.push('/forgot-password'),
-                          child: const Text('Forgot password?'),
+                          child: const AppText('Forgot password?'),
                         ),
                       ),
                       if (_error != null)
@@ -222,7 +214,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Text('Sign in'),
+                              : const AppText('Sign in'),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -231,13 +223,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: OutlinedButton.icon(
                           onPressed: _loading ? null : _google,
                           icon: const Icon(Icons.g_mobiledata, size: 28),
-                          label: const Text('Continue with Google'),
+                          label: const AppText('Continue with Google'),
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextButton(
                         onPressed: () => context.push('/register'),
-                        child: const Text('Create an account'),
+                        child: const AppText('Create an account'),
                       ),
                     ],
                   ),

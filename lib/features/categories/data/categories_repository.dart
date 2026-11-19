@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -26,8 +27,10 @@ class CategoriesRepository {
     return backend.firestore!
         .collection(FirestorePaths.categories(uid))
         .snapshots()
-        .map((snap) =>
-            snap.docs.map((d) => Category.fromMap(d.id, d.data())).toList());
+        .map(
+          (snap) =>
+              snap.docs.map((d) => Category.fromMap(d.id, d.data())).toList(),
+        );
   }
 
   Future<Category> create({
@@ -36,6 +39,7 @@ class CategoriesRepository {
     required int color,
     required String icon,
   }) async {
+    Money.name(name);
     final category = Category(
       id: _uuid.v4(),
       name: name,
@@ -56,6 +60,7 @@ class CategoriesRepository {
   }
 
   Future<Category> update(Category category) async {
+    Money.name(category.name);
     final backend = _ref.read(appBackendProvider);
     if (backend.isDemo) {
       return _ref.read(demoStoreProvider).upsertCategory(category);
@@ -71,9 +76,27 @@ class CategoriesRepository {
   Future<void> delete(String id) async {
     final backend = _ref.read(appBackendProvider);
     if (backend.isDemo) {
-      return _ref.read(demoStoreProvider).deleteCategory(id);
+      final store = _ref.read(demoStoreProvider);
+      if (store.transactions.any((t) => t.categoryId == id) ||
+          store.budgets.any((b) => b.categoryIds.contains(id))) {
+        throw StateError('This category is used in history or budgets.');
+      }
+      return store.deleteCategory(id);
     }
     final uid = backend.auth!.currentUser!.uid;
+    final used = await backend.firestore!
+        .collection(FirestorePaths.transactions(uid))
+        .where('categoryId', isEqualTo: id)
+        .limit(1)
+        .get();
+    final budgets = await backend.firestore!
+        .collection(FirestorePaths.budgets(uid))
+        .where('categoryIds', arrayContains: id)
+        .limit(1)
+        .get();
+    if (used.docs.isNotEmpty || budgets.docs.isNotEmpty) {
+      throw StateError('This category is used in history or budgets.');
+    }
     await backend.firestore!
         .collection(FirestorePaths.categories(uid))
         .doc(id)

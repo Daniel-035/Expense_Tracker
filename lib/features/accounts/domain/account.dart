@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:equatable/equatable.dart';
 
 enum AccountType {
@@ -42,41 +43,50 @@ class Account extends Equatable {
     required this.accountName,
     required this.accountType,
     required this.balance,
+    this.archived = false,
   });
 
   final String id;
   final String accountName;
   final AccountType accountType;
   final double balance;
+  final bool archived;
 
   Account copyWith({
     String? accountName,
     AccountType? accountType,
     double? balance,
+    bool? archived,
   }) {
     return Account(
       id: id,
       accountName: accountName ?? this.accountName,
       accountType: accountType ?? this.accountType,
       balance: balance ?? this.balance,
+      archived: archived ?? this.archived,
     );
   }
 
   Map<String, dynamic> toMap() => {
-        'accountName': accountName,
-        'accountType': accountType.name,
-        'balance': balance,
-      };
+    'accountName': accountName,
+    'accountType': accountType.name,
+    'balance': balance,
+    'archived': archived,
+    'balanceMinor': Money.minor(balance),
+  };
 
   factory Account.fromMap(String id, Map<String, dynamic> map) {
     return Account(
       id: id,
       accountName: map['accountName'] as String? ?? '',
-      accountType: AccountType.fromString(map['accountType'] as String? ?? 'cash'),
-      balance: (map['balance'] as num?)?.toDouble() ?? 0,
+      accountType: AccountType.fromString(
+        map['accountType'] as String? ?? 'cash',
+      ),
+      balance: Money.read(map, 'balance'),
+      archived: map['archived'] as bool? ?? false,
     );
   }
 
   @override
-  List<Object?> get props => [id, accountName, accountType, balance];
+  List<Object?> get props => [id, accountName, accountType, balance, archived];
 }

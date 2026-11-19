@@ -11,12 +11,28 @@ class UserBootstrap {
   UserBootstrap(this._ref);
 
   final Ref _ref;
+  final Map<String, Future<void>> _pending = {};
 
-  Future<void> ensureDefaults() async {
+  Future<void> ensureDefaults() {
+    final uid = readCurrentUid(_ref);
+    if (uid == null) {
+      return Future.value();
+    }
+    return _pending.putIfAbsent(
+      uid,
+      () => _ensureDefaults().whenComplete(() {
+        _pending.remove(uid);
+      }),
+    );
+  }
+
+  Future<void> _ensureDefaults() async {
     final backend = _ref.read(appBackendProvider);
     if (backend.isDemo) return;
     final uid = backend.auth?.currentUser?.uid;
-    if (uid == null) return;
+    if (uid == null) {
+      return;
+    }
 
     final fs = backend.firestore!;
     final accounts = await fs
@@ -28,44 +44,45 @@ class UserBootstrap {
         .limit(1)
         .get();
 
-    if (accounts.docs.isNotEmpty && categories.docs.isNotEmpty) return;
-
-    final batch = fs.batch();
+    final defaults = <String, Map<String, dynamic>>{};
+    if (accounts.docs.isEmpty) {
+      defaults['${FirestorePaths.accounts(uid)}/default_cash'] = {
+        'accountName': 'Cash',
+        'accountType': AccountType.cash.name,
+        'balance': 0,
+        'balanceMinor': 0,
+      };
+    }
     if (categories.docs.isEmpty) {
-      for (final def in kDefaultCategories) {
-        final ref = fs.collection(FirestorePaths.categories(uid)).doc();
-        batch.set(ref, {
+      for (final (index, def) in kDefaultCategories.indexed) {
+        defaults['${FirestorePaths.categories(uid)}/default_$index'] = {
           'name': def.name,
           'type': def.type,
           'color': def.color,
           'icon': def.icon,
           'isSystem': true,
-        });
+        };
       }
     }
-    if (accounts.docs.isEmpty) {
-      final cashRef = fs.collection(FirestorePaths.accounts(uid)).doc();
-      batch.set(cashRef, {
-        'accountName': 'Cash',
-        'accountType': AccountType.cash.name,
-        'balance': 0,
-      });
-    }
-
-    // Settings doc if missing
-    final settings = await fs.doc(FirestorePaths.settings(uid)).get();
-    if (!settings.exists) {
-      batch.set(fs.doc(FirestorePaths.settings(uid)), {
-        'theme': 'system',
-        'language': 'en',
-        'currency': 'INR',
-        'biometric': false,
-        'notifications': true,
-        'pinEnabled': false,
-      });
-    }
-
-    await batch.commit();
+    defaults[FirestorePaths.settings(uid)] = {
+      'theme': 'system',
+      'language': 'en',
+      'currency': 'INR',
+      'biometric': false,
+      'notifications': false,
+      'pinEnabled': false,
+    };
+    await fs.runTransaction((txn) async {
+      final missing = <String>[];
+      for (final path in defaults.keys) {
+        if (!(await txn.get(fs.doc(path))).exists) {
+          missing.add(path);
+        }
+      }
+      for (final path in missing) {
+        txn.set(fs.doc(path), defaults[path]!);
+      }
+    });
   }
 }
 

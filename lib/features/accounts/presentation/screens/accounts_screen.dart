@@ -1,3 +1,6 @@
+import '../../../../core/l10n/app_text.dart';
+import '../../../../core/utils/money.dart';
+import '../../../../shared/widgets/async_action_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,7 +22,7 @@ class AccountsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Accounts'),
+        title: const AppText('Accounts'),
         actions: [
           IconButton(
             icon: const Icon(Icons.swap_horiz),
@@ -42,12 +45,14 @@ class AccountsScreen extends ConsumerWidget {
               title: 'No accounts',
               action: FilledButton(
                 onPressed: () => _showForm(context, ref),
-                child: const Text('Add account'),
+                child: const AppText('Add account'),
               ),
             );
           }
-          final total =
-              accounts.fold<double>(0, (s, a) => s + a.balance);
+          final total = accounts.fold<double>(
+            0,
+            (s, a) => Money.add(s, a.balance),
+          );
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -60,39 +65,27 @@ class AccountsScreen extends ConsumerWidget {
               ...accounts.map(
                 (a) => Card(
                   child: ListTile(
-                    leading: CircleAvatar(
-                      child: Icon(_iconFor(a.accountType)),
+                    leading: CircleAvatar(child: Icon(_iconFor(a.accountType))),
+                    title: Text(
+                      '${a.accountName}${a.archived ? " (archived)" : ""}',
                     ),
-                    title: Text(a.accountName),
                     subtitle: Text(a.accountType.label),
                     trailing: Text(
                       CurrencyFormatter.format(a.balance, currency: currency),
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     onTap: () => _showForm(context, ref, account: a),
-                    onLongPress: () async {
-                      final ok = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Delete account?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('Cancel'),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text('Delete'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (ok == true) {
-                        await ref
-                            .read(accountsRepositoryProvider)
-                            .delete(a.id);
-                      }
-                    },
+                    onLongPress: () => confirmMutation(
+                      context,
+                      title: a.archived
+                          ? 'Restore account?'
+                          : 'Archive account?',
+                      message:
+                          'Transaction history and balances are preserved.',
+                      action: () => ref
+                          .read(accountsRepositoryProvider)
+                          .setArchived(a.id, !a.archived),
+                    ),
                   ),
                 ),
               ),
@@ -156,41 +149,55 @@ class AccountsScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   TextField(
                     controller: name,
-                    decoration: const InputDecoration(labelText: 'Name'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Name'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<AccountType>(
                     // ignore: deprecated_member_use
                     value: type,
-                    decoration: const InputDecoration(labelText: 'Type'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Type'),
+                    ),
                     items: AccountType.values
-                        .map((e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e.label),
-                            ))
+                        .map(
+                          (e) =>
+                              DropdownMenuItem(value: e, child: Text(e.label)),
+                        )
                         .toList(),
                     onChanged: (v) => setModal(() => type = v!),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: balance,
-                    decoration:
-                        const InputDecoration(labelText: 'Opening balance'),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Opening balance',
+                    ),
+                    enabled: account == null,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  FilledButton(
+                  AsyncActionButton(
                     onPressed: () async {
-                      final bal = double.tryParse(balance.text) ?? 0;
+                      final bal = double.tryParse(balance.text);
+                      if (bal == null || !bal.isFinite) {
+                        throw StateError('Enter a valid opening balance.');
+                      }
                       if (account == null) {
-                        await ref.read(accountsRepositoryProvider).create(
+                        await ref
+                            .read(accountsRepositoryProvider)
+                            .create(
                               name: name.text.trim(),
                               type: type,
                               balance: bal,
                             );
                       } else {
-                        await ref.read(accountsRepositoryProvider).update(
+                        await ref
+                            .read(accountsRepositoryProvider)
+                            .update(
                               account.copyWith(
                                 accountName: name.text.trim(),
                                 accountType: type,
@@ -200,7 +207,7 @@ class AccountsScreen extends ConsumerWidget {
                       }
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
-                    child: const Text('Save'),
+                    child: const AppText('Save'),
                   ),
                 ],
               );
@@ -212,10 +219,12 @@ class AccountsScreen extends ConsumerWidget {
   }
 
   Future<void> _showTransfer(BuildContext context, WidgetRef ref) async {
-    final accounts = ref.read(accountsProvider).asData?.value ?? [];
+    final accounts = (ref.read(accountsProvider).asData?.value ?? [])
+        .where((a) => !a.archived)
+        .toList();
     if (accounts.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Need at least two accounts')),
+        const SnackBar(content: AppText('Need at least two accounts')),
       );
       return;
     }
@@ -244,12 +253,16 @@ class AccountsScreen extends ConsumerWidget {
                   DropdownButtonFormField<String>(
                     // ignore: deprecated_member_use
                     value: from,
-                    decoration: const InputDecoration(labelText: 'From'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'From'),
+                    ),
                     items: accounts
-                        .map((a) => DropdownMenuItem(
-                              value: a.id,
-                              child: Text(a.accountName),
-                            ))
+                        .map(
+                          (a) => DropdownMenuItem(
+                            value: a.id,
+                            child: Text(a.accountName),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) => setModal(() => from = v),
                   ),
@@ -257,37 +270,46 @@ class AccountsScreen extends ConsumerWidget {
                   DropdownButtonFormField<String>(
                     // ignore: deprecated_member_use
                     value: to,
-                    decoration: const InputDecoration(labelText: 'To'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'To'),
+                    ),
                     items: accounts
-                        .map((a) => DropdownMenuItem(
-                              value: a.id,
-                              child: Text(a.accountName),
-                            ))
+                        .map(
+                          (a) => DropdownMenuItem(
+                            value: a.id,
+                            child: Text(a.accountName),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) => setModal(() => to = v),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: amount,
-                    decoration: const InputDecoration(labelText: 'Amount'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Amount'),
+                    ),
                     validator: Validators.amount,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  FilledButton(
+                  AsyncActionButton(
                     onPressed: () async {
-                      if (from == null || to == null || from == to) return;
+                      if (from == null || to == null || from == to) {
+                        throw StateError('Select two different accounts.');
+                      }
                       final amt = double.tryParse(amount.text);
-                      if (amt == null || amt <= 0) return;
-                      await ref.read(accountsRepositoryProvider).transfer(
-                            fromId: from!,
-                            toId: to!,
-                            amount: amt,
-                          );
+                      if (amt == null || !amt.isFinite || amt <= 0) {
+                        throw StateError('Enter a valid positive amount.');
+                      }
+                      await ref
+                          .read(accountsRepositoryProvider)
+                          .transfer(fromId: from!, toId: to!, amount: amt);
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
-                    child: const Text('Transfer'),
+                    child: const AppText('Transfer'),
                   ),
                 ],
               );

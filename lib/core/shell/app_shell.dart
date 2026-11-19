@@ -14,32 +14,96 @@ class AppShell extends ConsumerWidget {
 
   int _indexFor(String location, List<_NavItem> items) {
     final i = items.indexWhere((e) => location.startsWith(e.path));
-    return i < 0 ? 0 : i;
+    return i < 0 ? (items.length == 5 ? 4 : 0) : i;
   }
 
   List<_NavItem> _mobile(AppL10n l10n) => [
-        _NavItem('/dashboard', l10n.navHome, Icons.dashboard_outlined, Icons.dashboard),
-        _NavItem('/transactions', l10n.navActivity, Icons.receipt_long_outlined, Icons.receipt_long),
-        _NavItem('/budgets', l10n.navBudgets, Icons.pie_chart_outline, Icons.pie_chart),
-        _NavItem('/analytics', l10n.navInsights, Icons.insights_outlined, Icons.insights),
-        _NavItem('/ai', l10n.navChat, Icons.chat_bubble_outline, Icons.chat_bubble),
-        _NavItem('/profile', l10n.navProfile, Icons.person_outline, Icons.person),
-      ];
+    _NavItem(
+      '/dashboard',
+      l10n.navHome,
+      Icons.dashboard_outlined,
+      Icons.dashboard,
+    ),
+    _NavItem(
+      '/transactions',
+      l10n.navActivity,
+      Icons.receipt_long_outlined,
+      Icons.receipt_long,
+    ),
+    _NavItem(
+      '/accounts',
+      l10n.navAccounts,
+      Icons.account_balance_wallet_outlined,
+      Icons.account_balance_wallet,
+    ),
+    _NavItem(
+      '/budgets',
+      l10n.navBudgets,
+      Icons.pie_chart_outline,
+      Icons.pie_chart,
+    ),
+    _NavItem('/profile', l10n.navMore, Icons.menu, Icons.menu_open),
+  ];
 
   List<_NavItem> _sidebar(AppL10n l10n) => [
-        _NavItem('/dashboard', l10n.navDashboard, Icons.dashboard_outlined, Icons.dashboard),
-        _NavItem('/transactions', l10n.navTransactions, Icons.receipt_long_outlined, Icons.receipt_long),
-        _NavItem('/accounts', l10n.navAccounts, Icons.account_balance_wallet_outlined, Icons.account_balance_wallet),
-        _NavItem('/categories', l10n.navCategories, Icons.category_outlined, Icons.category),
-        _NavItem('/budgets', l10n.navBudgets, Icons.pie_chart_outline, Icons.pie_chart),
-        _NavItem('/bills', l10n.navBills, Icons.event_note_outlined, Icons.event_note),
-        _NavItem('/goals', l10n.navGoals, Icons.flag_outlined, Icons.flag),
-        _NavItem('/analytics', l10n.navAnalytics, Icons.insights_outlined, Icons.insights),
-        _NavItem('/calendar', l10n.navCalendar, Icons.calendar_month_outlined, Icons.calendar_month),
-        _NavItem('/ai', l10n.navChat, Icons.chat_bubble_outline, Icons.chat_bubble),
-        _NavItem('/profile', l10n.navProfile, Icons.person_outline, Icons.person),
-        _NavItem('/settings', l10n.navSettings, Icons.settings_outlined, Icons.settings),
-      ];
+    _NavItem(
+      '/dashboard',
+      l10n.navDashboard,
+      Icons.dashboard_outlined,
+      Icons.dashboard,
+    ),
+    _NavItem(
+      '/transactions',
+      l10n.navTransactions,
+      Icons.receipt_long_outlined,
+      Icons.receipt_long,
+    ),
+    _NavItem(
+      '/accounts',
+      l10n.navAccounts,
+      Icons.account_balance_wallet_outlined,
+      Icons.account_balance_wallet,
+    ),
+    _NavItem(
+      '/categories',
+      l10n.navCategories,
+      Icons.category_outlined,
+      Icons.category,
+    ),
+    _NavItem(
+      '/budgets',
+      l10n.navBudgets,
+      Icons.pie_chart_outline,
+      Icons.pie_chart,
+    ),
+    _NavItem(
+      '/bills',
+      l10n.navBills,
+      Icons.event_note_outlined,
+      Icons.event_note,
+    ),
+    _NavItem('/goals', l10n.navGoals, Icons.flag_outlined, Icons.flag),
+    _NavItem(
+      '/analytics',
+      l10n.navAnalytics,
+      Icons.insights_outlined,
+      Icons.insights,
+    ),
+    _NavItem(
+      '/calendar',
+      l10n.navCalendar,
+      Icons.calendar_month_outlined,
+      Icons.calendar_month,
+    ),
+    _NavItem('/ai', l10n.navChat, Icons.chat_bubble_outline, Icons.chat_bubble),
+    _NavItem('/profile', l10n.navProfile, Icons.person_outline, Icons.person),
+    _NavItem(
+      '/settings',
+      l10n.navSettings,
+      Icons.settings_outlined,
+      Icons.settings,
+    ),
+  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -61,17 +125,16 @@ class AppShell extends ConsumerWidget {
               NavigationRail(
                 extended: width >= 1100,
                 selectedIndex: selected,
-                onDestinationSelected: (i) =>
-                    context.go(sidebarItems[i].path),
+                onDestinationSelected: (i) => context.go(sidebarItems[i].path),
                 leading: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   child: Text(
                     l10n.appName,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.azure,
-                          letterSpacing: -0.4,
-                        ),
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.azure,
+                      letterSpacing: -0.4,
+                    ),
                   ),
                 ),
                 destinations: [
@@ -100,8 +163,7 @@ class AppShell extends ConsumerWidget {
         body: child,
         bottomNavigationBar: NavigationBar(
           selectedIndex: selected.clamp(0, mobileDestinations.length - 1),
-          onDestinationSelected: (i) =>
-              context.go(mobileDestinations[i].path),
+          onDestinationSelected: (i) => context.go(mobileDestinations[i].path),
           destinations: [
             for (final item in mobileDestinations)
               NavigationDestination(
@@ -122,57 +184,10 @@ class _Fab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = ref.watch(l10nProvider);
     return TapScale(
       scale: 0.92,
       borderRadius: BorderRadius.circular(18),
-      onTap: () async {
-        final type = await showModalBottomSheet<String>(
-          context: context,
-          showDragHandle: true,
-          builder: (ctx) => SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TapScale(
-                    onTap: () => Navigator.pop(ctx, 'income'),
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: Color(0xFFD1FAE5),
-                        child:
-                            Icon(Icons.arrow_downward, color: AppColors.income),
-                      ),
-                      title: Text(l10n.income),
-                      subtitle: Text(l10n.isHindi
-                          ? 'वेतन, फ्रीलांस, उपहार…'
-                          : 'Salary, freelance, gifts…'),
-                    ),
-                  ),
-                  TapScale(
-                    onTap: () => Navigator.pop(ctx, 'expense'),
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: Color(0xFFFFE4E6),
-                        child:
-                            Icon(Icons.arrow_upward, color: AppColors.expense),
-                      ),
-                      title: Text(l10n.expense),
-                      subtitle: Text(l10n.isHindi
-                          ? 'खाना, किराया, खरीदारी…'
-                          : 'Food, rent, shopping…'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-        if (type != null && context.mounted) {
-          context.push('/transactions/new?type=$type');
-        }
-      },
+      onTap: () => context.push('/transactions/new?type=expense'),
       child: Material(
         elevation: 4,
         shadowColor: AppColors.azure.withValues(alpha: 0.4),

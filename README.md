@@ -2,6 +2,8 @@
 
 Personal expense tracker for Android, iOS, and Web — Flutter + Firebase (Clean Architecture + Riverpod).
 
+See [implementation notes](IMPLEMENTATION_NOTES.md) for reliability fixes, validation scope, and coordinated app/rules rollout requirements. Recurrence currently saves manual templates; push reminders are unavailable. Savings goals record progress without moving account funds. PIN/device authentication is configured per account on each device.
+
 ## Features (V1)
 
 - Email/password & Google auth (Firebase)
@@ -74,7 +76,7 @@ flutterfire configure
 
 ```bash
 cd functions && npm ci && npm run build && cd ..
-firebase deploy --only firestore:rules,storage:rules,functions:deleteUserAccount
+firebase deploy --only firestore:rules,storage:rules,functions
 ```
 
 7. Deploy web:

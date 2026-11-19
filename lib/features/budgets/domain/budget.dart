@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:equatable/equatable.dart';
 
 import '../../transactions/domain/money_transaction.dart';
@@ -63,7 +64,7 @@ class Budget extends Equatable {
       if (categoryIds.isNotEmpty && !categoryIds.contains(t.categoryId)) {
         continue;
       }
-      total += t.amount;
+      total = Money.add(total, t.amount);
     }
     return copyWith(spent: total);
   }
@@ -74,9 +75,11 @@ class Budget extends Equatable {
     // that target exactly one category.
     'categoryId': categoryIds.length == 1 ? categoryIds.first : null,
     'amount': amount,
+    'amountMinor': Money.minor(amount),
     'period': period.name,
     'monthKey': monthKey,
     'spent': spent,
+    'spentMinor': Money.minor(spent),
   };
 
   factory Budget.fromMap(String id, Map<String, dynamic> map) {
@@ -95,12 +98,12 @@ class Budget extends Equatable {
           : legacyCategoryId == null || legacyCategoryId.isEmpty
           ? const []
           : [legacyCategoryId],
-      amount: (map['amount'] as num?)?.toDouble() ?? 0,
+      amount: Money.read(map, 'amount'),
       period: periodStr == 'weekly'
           ? BudgetPeriod.weekly
           : BudgetPeriod.monthly,
       monthKey: map['monthKey'] as String? ?? '',
-      spent: (map['spent'] as num?)?.toDouble() ?? 0,
+      spent: Money.read(map, 'spent'),
     );
   }
 

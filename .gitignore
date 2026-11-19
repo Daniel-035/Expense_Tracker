@@ -46,3 +46,6 @@ analyze_out.txt
 google-services.json
 GoogleService-Info.plist
 lib/firebase_options.dart.bak
+
+# Local Firebase deployment cache
+.firebase/

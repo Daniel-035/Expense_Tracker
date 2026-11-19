@@ -23,6 +23,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _phone = TextEditingController();
   bool _editing = false;
   bool _uploading = false;
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -54,15 +55,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     setState(() => _uploading = true);
     try {
-      final url = await ref.read(storageServiceProvider).uploadProfilePhoto(uid);
-      await ref.read(profileRepositoryProvider).update(
-            profile.copyWith(profilePhoto: url),
-          );
+      final url = await ref
+          .read(storageServiceProvider)
+          .uploadProfilePhoto(uid);
+      await ref
+          .read(profileRepositoryProvider)
+          .update(profile.copyWith(profilePhoto: url));
       ref.invalidate(authStateProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.photoUpdated)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.photoUpdated)));
       }
     } on AppException catch (e) {
       if (mounted) {
@@ -72,9 +75,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${l10n.photoFailed}: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${l10n.photoFailed}: $e')));
       }
     } finally {
       if (mounted) setState(() => _uploading = false);
@@ -98,19 +101,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         actions: [
           IconButton(
             icon: Icon(_editing ? Icons.check : Icons.edit_outlined),
-            onPressed: () async {
-              if (_editing && profile != null) {
-                await ref.read(profileRepositoryProvider).update(
-                      profile.copyWith(
-                        name: _name.text.trim(),
-                        phone: _phone.text.trim().isEmpty
-                            ? null
-                            : _phone.text.trim(),
-                      ),
-                    );
-              }
-              setState(() => _editing = !_editing);
-            },
+            onPressed: _saving
+                ? null
+                : () async {
+                    if (!_editing) {
+                      setState(() => _editing = true);
+                      return;
+                    }
+                    if (profile == null) return;
+                    setState(() => _saving = true);
+                    try {
+                      await ref
+                          .read(profileRepositoryProvider)
+                          .update(
+                            profile.copyWith(
+                              name: _name.text.trim(),
+                              phone: _phone.text.trim().isEmpty
+                                  ? null
+                                  : _phone.text.trim(),
+                            ),
+                          );
+                      if (mounted) setState(() => _editing = false);
+                    } catch (error) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('$error')));
+                      }
+                    } finally {
+                      if (mounted) setState(() => _saving = false);
+                    }
+                  },
           ),
         ],
       ),
@@ -124,11 +145,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     children: [
                       CircleAvatar(
                         radius: 44,
-                        backgroundImage: profile.profilePhoto != null &&
+                        backgroundImage:
+                            profile.profilePhoto != null &&
                                 profile.profilePhoto!.isNotEmpty
                             ? NetworkImage(profile.profilePhoto!)
                             : null,
-                        child: profile.profilePhoto == null ||
+                        child:
+                            profile.profilePhoto == null ||
                                 profile.profilePhoto!.isEmpty
                             ? Text(
                                 profile.name.isNotEmpty
@@ -216,6 +239,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   subtitle: Text(profile.timezone),
                 ),
                 const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.insights),
+                  title: Text(l10n.navAnalytics),
+                  onTap: () => context.go('/analytics'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.chat_bubble_outline),
+                  title: Text(l10n.navAi),
+                  onTap: () => context.go('/ai'),
+                ),
                 ListTile(
                   leading: const Icon(Icons.account_balance_wallet_outlined),
                   title: Text(l10n.navAccounts),

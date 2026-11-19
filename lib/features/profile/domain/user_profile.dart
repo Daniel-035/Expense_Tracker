@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 class UserProfile extends Equatable {
+  static const _unset = Object();
   const UserProfile({
     required this.id,
     required this.email,
@@ -26,7 +27,7 @@ class UserProfile extends Equatable {
   UserProfile copyWith({
     String? name,
     String? profilePhoto,
-    String? phone,
+    Object? phone = _unset,
     String? currency,
     String? language,
     String? timezone,
@@ -36,7 +37,7 @@ class UserProfile extends Equatable {
       email: email,
       name: name ?? this.name,
       profilePhoto: profilePhoto ?? this.profilePhoto,
-      phone: phone ?? this.phone,
+      phone: identical(phone, _unset) ? this.phone : phone as String?,
       currency: currency ?? this.currency,
       language: language ?? this.language,
       timezone: timezone ?? this.timezone,
@@ -45,15 +46,15 @@ class UserProfile extends Equatable {
   }
 
   Map<String, dynamic> toMap() => {
-        'email': email,
-        'name': name,
-        'profilePhoto': profilePhoto,
-        'phone': phone,
-        'currency': currency,
-        'language': language,
-        'timezone': timezone,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    'email': email,
+    'name': name,
+    'profilePhoto': profilePhoto,
+    'phone': phone,
+    'currency': currency,
+    'language': language,
+    'timezone': timezone,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory UserProfile.fromMap(String id, Map<String, dynamic> map) {
     return UserProfile(
@@ -65,12 +66,21 @@ class UserProfile extends Equatable {
       currency: map['currency'] as String? ?? 'INR',
       language: map['language'] as String? ?? 'en',
       timezone: map['timezone'] as String? ?? 'Asia/Kolkata',
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(map['createdAt'] as String? ?? '') ??
           DateTime.now(),
     );
   }
 
   @override
-  List<Object?> get props =>
-      [id, email, name, profilePhoto, phone, currency, language, timezone];
+  List<Object?> get props => [
+    id,
+    email,
+    name,
+    profilePhoto,
+    phone,
+    currency,
+    language,
+    timezone,
+  ];
 }

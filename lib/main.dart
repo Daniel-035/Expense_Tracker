@@ -1,3 +1,6 @@
+import 'package:intl/intl.dart';
+import 'core/l10n/app_text.dart';
+import 'core/shell/device_lock_gate.dart';
 import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -142,8 +145,20 @@ class LedgerOneApp extends ConsumerWidget {
       _ => ThemeMode.system,
     };
     final locale = Locale(language == 'hi' ? 'hi' : 'en');
+    Intl.defaultLocale = locale.languageCode;
 
     return MaterialApp.router(
+      builder: (context, child) => ref
+          .watch(authUidProvider)
+          .when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stack) => const Center(
+              child: AppText('Could not restore session. Restart to retry.'),
+            ),
+            data: (uid) => uid == null
+                ? child!
+                : DeviceLockGate(key: ValueKey(uid), uid: uid, child: child!),
+          ),
       title: 'LedgerOne',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),

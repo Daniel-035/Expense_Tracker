@@ -1,3 +1,5 @@
+import '../../../core/l10n/app_text.dart';
+import '../../../shared/widgets/data_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -22,6 +24,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final status = dataStatus(
+      [ref.watch(transactionsProvider), ref.watch(billsProvider)],
+      () {
+        ref.invalidate(transactionsProvider);
+        ref.invalidate(billsProvider);
+      },
+    );
+    if (status != null) return status;
     final txs = ref.watch(transactionsProvider).asData?.value ?? const [];
     final bills = ref.watch(billsProvider).asData?.value ?? const [];
     final currency =
@@ -30,14 +40,18 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final daysInMonth = DateTime(_focused.year, _focused.month + 1, 0).day;
     final firstWeekday = DateTime(_focused.year, _focused.month, 1).weekday;
 
-    final dayTx = txs.where((t) =>
-        t.createdAt.year == _selected.year &&
-        t.createdAt.month == _selected.month &&
-        t.createdAt.day == _selected.day);
-    final dayBills = bills.where((b) =>
-        b.dueDate.year == _selected.year &&
-        b.dueDate.month == _selected.month &&
-        b.dueDate.day == _selected.day);
+    final dayTx = txs.where(
+      (t) =>
+          t.createdAt.year == _selected.year &&
+          t.createdAt.month == _selected.month &&
+          t.createdAt.day == _selected.day,
+    );
+    final dayBills = bills.where(
+      (b) =>
+          b.dueDate.year == _selected.year &&
+          b.dueDate.month == _selected.month &&
+          b.dueDate.day == _selected.day,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -62,13 +76,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         children: [
           Row(
             children: const [
-              Expanded(child: Center(child: Text('Mon'))),
-              Expanded(child: Center(child: Text('Tue'))),
-              Expanded(child: Center(child: Text('Wed'))),
-              Expanded(child: Center(child: Text('Thu'))),
-              Expanded(child: Center(child: Text('Fri'))),
-              Expanded(child: Center(child: Text('Sat'))),
-              Expanded(child: Center(child: Text('Sun'))),
+              Expanded(child: Center(child: AppText('Mon'))),
+              Expanded(child: Center(child: AppText('Tue'))),
+              Expanded(child: Center(child: AppText('Wed'))),
+              Expanded(child: Center(child: AppText('Thu'))),
+              Expanded(child: Center(child: AppText('Fri'))),
+              Expanded(child: Center(child: AppText('Sat'))),
+              Expanded(child: Center(child: AppText('Sun'))),
             ],
           ),
           const SizedBox(height: 8),
@@ -87,15 +101,20 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               }
               final day = index - (firstWeekday - 1) + 1;
               final date = DateTime(_focused.year, _focused.month, day);
-              final hasTx = txs.any((t) =>
-                  t.createdAt.year == date.year &&
-                  t.createdAt.month == date.month &&
-                  t.createdAt.day == date.day);
-              final hasBill = bills.any((b) =>
-                  b.dueDate.year == date.year &&
-                  b.dueDate.month == date.month &&
-                  b.dueDate.day == date.day);
-              final selected = _selected.year == date.year &&
+              final hasTx = txs.any(
+                (t) =>
+                    t.createdAt.year == date.year &&
+                    t.createdAt.month == date.month &&
+                    t.createdAt.day == date.day,
+              );
+              final hasBill = bills.any(
+                (b) =>
+                    b.dueDate.year == date.year &&
+                    b.dueDate.month == date.month &&
+                    b.dueDate.day == date.day,
+              );
+              final selected =
+                  _selected.year == date.year &&
                   _selected.month == date.month &&
                   _selected.day == date.day;
               return InkWell(
@@ -145,7 +164,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ),
           SectionHeader(DateFormat.yMMMEd().format(_selected)),
           if (dayTx.isEmpty && dayBills.isEmpty)
-            const Text('Nothing on this day')
+            const AppText('Nothing on this day')
           else ...[
             ...dayTx.map((t) {
               final isIncome = t.transactionType == TransactionType.income;

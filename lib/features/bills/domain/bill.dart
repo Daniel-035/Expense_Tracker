@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:equatable/equatable.dart';
 
 class Bill extends Equatable {
@@ -8,6 +9,7 @@ class Bill extends Equatable {
     required this.dueDate,
     this.recurring = true,
     this.paid = false,
+    this.billingDay,
   });
 
   final String id;
@@ -16,24 +18,28 @@ class Bill extends Equatable {
   final DateTime dueDate;
   final bool recurring;
   final bool paid;
+  final int? billingDay;
 
   Map<String, dynamic> toMap() => {
-        'title': title,
-        'amount': amount,
-        'dueDate': dueDate.toIso8601String(),
-        'recurring': recurring,
-        'paid': paid,
-      };
+    'title': title,
+    'amount': amount,
+    'amountMinor': Money.minor(amount),
+    'dueDate': dueDate.toIso8601String(),
+    'recurring': recurring,
+    'paid': paid,
+    'billingDay': billingDay ?? dueDate.day,
+  };
 
   factory Bill.fromMap(String id, Map<String, dynamic> map) {
     return Bill(
       id: id,
       title: map['title'] as String? ?? '',
-      amount: (map['amount'] as num?)?.toDouble() ?? 0,
+      amount: Money.read(map, 'amount'),
       dueDate:
           DateTime.tryParse(map['dueDate'] as String? ?? '') ?? DateTime.now(),
       recurring: map['recurring'] as bool? ?? true,
       paid: map['paid'] as bool? ?? false,
+      billingDay: map['billingDay'] as int?,
     );
   }
 
@@ -45,6 +51,7 @@ class Bill extends Equatable {
       dueDate: dueDate ?? this.dueDate,
       recurring: recurring,
       paid: paid ?? this.paid,
+      billingDay: billingDay ?? this.dueDate.day,
     );
   }
 

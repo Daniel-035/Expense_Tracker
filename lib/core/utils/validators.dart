@@ -1,3 +1,5 @@
+import 'money.dart';
+
 class Validators {
   static String? email(String? value) {
     if (value == null || value.trim().isEmpty) {
@@ -40,6 +42,11 @@ class Validators {
     final parsed = double.tryParse(value.trim());
     if (parsed == null || !parsed.isFinite || parsed <= 0) {
       return 'Enter a valid amount';
+    }
+    try {
+      Money.minor(parsed, positive: true);
+    } catch (_) {
+      return 'Use at most two decimal places within the supported range';
     }
     return null;
   }

@@ -1,3 +1,4 @@
+import 'money.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -61,11 +62,7 @@ Future<String> shareBytesFile({
   required String mime,
   String? subject,
 }) async {
-  final xFile = XFile.fromData(
-    bytes,
-    mimeType: mime,
-    name: '$name.$extension',
-  );
+  final xFile = XFile.fromData(bytes, mimeType: mime, name: '$name.$extension');
   await SharePlus.instance.share(
     ShareParams(
       files: [xFile],
@@ -95,10 +92,14 @@ Future<Uint8List> buildActivityPdfBytes({
   var expense = 0.0;
   for (final t in sorted) {
     if (t.createdAt.isBefore(monthStart)) continue;
-    if (t.transactionType == TransactionType.income) income += t.amount;
-    if (t.transactionType == TransactionType.expense) expense += t.amount;
+    if (t.transactionType == TransactionType.income) {
+      income = Money.add(income, t.amount);
+    }
+    if (t.transactionType == TransactionType.expense) {
+      expense = Money.add(expense, t.amount);
+    }
   }
-  final balance = accounts.fold<double>(0, (s, a) => s + a.balance);
+  final balance = accounts.fold<double>(0, (s, a) => Money.add(s, a.balance));
   final liveBudgets = budgets.map((b) => b.withLiveSpent(sorted)).toList();
 
   final doc = pw.Document();
@@ -321,11 +322,7 @@ Future<String> shareReportBundle(
   }
   if (files.isEmpty) return 'Nothing to share';
   await SharePlus.instance.share(
-    ShareParams(
-      files: files,
-      subject: bundle.title,
-      text: bundle.title,
-    ),
+    ShareParams(files: files, subject: bundle.title, text: bundle.title),
   );
   return 'Shared ${files.length} file(s)';
 }

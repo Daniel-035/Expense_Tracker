@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -38,6 +39,7 @@ class BudgetsRepository {
     required BudgetPeriod period,
     List<String> categoryIds = const [],
   }) async {
+    Money.minor(amount, positive: true);
     final now = DateTime.now();
     final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
     final budget = Budget(
@@ -91,12 +93,30 @@ final liveBudgetsProvider = Provider<AsyncValue<List<Budget>>>((ref) {
     error: (e, st) => AsyncError(e, st),
     data: (budgets) {
       return txsAsync.when(
-        loading: () =>
-            AsyncData(budgets.map((b) => b.copyWith(spent: 0)).toList()),
-        error: (_, __) => AsyncData(budgets),
+        loading: () => const AsyncLoading(),
+        error: (error, stack) => AsyncError(error, stack),
         data: (txs) =>
             AsyncData(budgets.map((b) => b.withLiveSpent(txs)).toList()),
       );
     },
   );
 });
+
+/// Budgets are recurring limits. This previews the selected week/month using
+/// the current rule, rather than presenting it as an archived budget snapshot.
+final budgetsForDateProvider =
+    Provider.family<AsyncValue<List<Budget>>, DateTime>((ref, at) {
+      final budgets = ref.watch(budgetsProvider);
+      final transactions = ref.watch(transactionsProvider);
+      return budgets.when(
+        loading: () => const AsyncLoading(),
+        error: (e, st) => AsyncError(e, st),
+        data: (rules) => transactions.when(
+          loading: () => const AsyncLoading(),
+          error: (e, st) => AsyncError(e, st),
+          data: (entries) => AsyncData(
+            rules.map((b) => b.withLiveSpent(entries, now: at)).toList(),
+          ),
+        ),
+      );
+    });

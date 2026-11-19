@@ -1,3 +1,5 @@
+import '../../../../core/l10n/app_text.dart';
+import '../../../../shared/widgets/async_action_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -19,7 +21,16 @@ class GoalsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Savings goals'),
+        title: const AppText('Savings progress'),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(36),
+          child: Padding(
+            padding: EdgeInsets.all(8),
+            child: Text(
+              'Tracks progress only; entries do not move account funds.',
+            ),
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -38,7 +49,7 @@ class GoalsScreen extends ConsumerWidget {
               subtitle: 'Emergency fund, vacation, house…',
               action: FilledButton(
                 onPressed: () => _showCreate(context, ref),
-                child: const Text('Create goal'),
+                child: const AppText('Create goal'),
               ),
             );
           }
@@ -62,12 +73,11 @@ class GoalsScreen extends ConsumerWidget {
                             ),
                           ),
                           if (g.isComplete)
-                            const Chip(label: Text('Complete')),
+                            const Chip(label: AppText('Complete')),
                           IconButton(
                             icon: const Icon(Icons.delete_outline),
-                            onPressed: () => ref
-                                .read(goalsRepositoryProvider)
-                                .delete(g.id),
+                            onPressed: () =>
+                                ref.read(goalsRepositoryProvider).delete(g.id),
                           ),
                         ],
                       ),
@@ -89,7 +99,7 @@ class GoalsScreen extends ConsumerWidget {
                         alignment: Alignment.centerRight,
                         child: FilledButton.tonal(
                           onPressed: () => _showDeposit(context, ref, g.id),
-                          child: const Text('Deposit'),
+                          child: const AppText('Record progress'),
                         ),
                       ),
                     ],
@@ -128,20 +138,24 @@ class GoalsScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   TextField(
                     controller: name,
-                    decoration: const InputDecoration(labelText: 'Name'),
+                    decoration: InputDecoration(
+                      labelText: AppText.translate(context, 'Name'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: target,
-                    decoration:
-                        const InputDecoration(labelText: 'Target amount'),
+                    decoration: const InputDecoration(
+                      labelText: 'Target amount',
+                    ),
                     validator: Validators.amount,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Deadline'),
+                    title: const AppText('Deadline'),
                     subtitle: Text(DateFormat.yMMMd().format(deadline)),
                     onTap: () async {
                       final d = await showDatePicker(
@@ -153,18 +167,20 @@ class GoalsScreen extends ConsumerWidget {
                       if (d != null) setModal(() => deadline = d);
                     },
                   ),
-                  FilledButton(
+                  AsyncActionButton(
                     onPressed: () async {
                       final amt = double.tryParse(target.text);
                       if (name.text.trim().isEmpty || amt == null) return;
-                      await ref.read(goalsRepositoryProvider).create(
+                      await ref
+                          .read(goalsRepositoryProvider)
+                          .create(
                             name: name.text.trim(),
                             target: amt,
                             deadline: deadline,
                           );
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
-                    child: const Text('Save'),
+                    child: const AppText('Save'),
                   ),
                 ],
               );
@@ -184,29 +200,32 @@ class GoalsScreen extends ConsumerWidget {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Deposit'),
+        title: const AppText('Deposit'),
         content: TextField(
           controller: amount,
-          decoration: const InputDecoration(labelText: 'Amount'),
+          decoration: InputDecoration(
+            labelText: AppText.translate(context, 'Amount'),
+          ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           autofocus: true,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const AppText('Cancel'),
           ),
-          FilledButton(
+          AsyncActionButton(
             onPressed: () async {
               final amt = double.tryParse(amount.text);
-              if (amt == null || amt <= 0) return;
-              await ref.read(goalsRepositoryProvider).deposit(
-                    goalId: goalId,
-                    amount: amt,
-                  );
+              if (amt == null || !amt.isFinite || amt <= 0) {
+                throw StateError('Enter a valid positive amount.');
+              }
+              await ref
+                  .read(goalsRepositoryProvider)
+                  .deposit(goalId: goalId, amount: amt);
               if (ctx.mounted) Navigator.pop(ctx);
             },
-            child: const Text('Add'),
+            child: const AppText('Add'),
           ),
         ],
       ),

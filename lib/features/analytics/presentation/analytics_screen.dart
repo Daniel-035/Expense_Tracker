@@ -1,3 +1,6 @@
+import '../../../core/l10n/app_text.dart';
+import '../../../core/utils/money.dart';
+import '../../../shared/widgets/data_status.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +27,14 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final status = dataStatus(
+      [ref.watch(transactionsProvider), ref.watch(categoriesProvider)],
+      () {
+        ref.invalidate(transactionsProvider);
+        ref.invalidate(categoriesProvider);
+      },
+    );
+    if (status != null) return status;
     final txs = ref.watch(transactionsProvider).asData?.value ?? const [];
     final categories = ref.watch(categoriesProvider).asData?.value ?? const [];
     final currency =
@@ -32,10 +43,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     final filtered = filterTransactionsByDate(txs, _dateFilter);
     final income = filtered
         .where((t) => t.transactionType == TransactionType.income)
-        .fold<double>(0, (s, t) => s + t.amount);
+        .fold<double>(0, (s, t) => Money.add(s, t.amount));
     final expense = filtered
         .where((t) => t.transactionType == TransactionType.expense)
-        .fold<double>(0, (s, t) => s + t.amount);
+        .fold<double>(0, (s, t) => Money.add(s, t.amount));
 
     final byCategory = <String, double>{};
     for (final t in filtered.where(
@@ -58,7 +69,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     final trend = _buildTrend(filtered, _dateFilter);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Analytics')),
+      appBar: AppBar(title: const AppText('Analytics')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -205,9 +216,9 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
         ),
       );
       if (t.transactionType == TransactionType.income) {
-        point.income += t.amount;
+        point.income = Money.add(point.income, t.amount);
       } else if (t.transactionType == TransactionType.expense) {
-        point.expense += t.amount;
+        point.expense = Money.add(point.expense, t.amount);
       }
     }
     final entries = map.entries.toList()

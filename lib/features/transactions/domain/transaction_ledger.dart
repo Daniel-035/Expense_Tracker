@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'money_transaction.dart';
 
 /// Returns the balance change for every account affected by [transaction].
@@ -38,7 +39,7 @@ Map<String, double> combineBalanceDeltas(
     for (final entry in change.entries) {
       combined.update(
         entry.key,
-        (value) => value + entry.value,
+        (value) => Money.add(value, entry.value),
         ifAbsent: () => entry.value,
       );
     }

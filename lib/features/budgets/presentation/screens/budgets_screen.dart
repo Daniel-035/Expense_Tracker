@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+import '../../../../shared/widgets/async_action_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,12 +12,15 @@ import '../../../settings/data/settings_repository.dart';
 import '../../data/budgets_repository.dart';
 import '../../domain/budget.dart';
 
+final _budgetDateProvider = StateProvider<DateTime>((ref) => DateTime.now());
+
 class BudgetsScreen extends ConsumerWidget {
   const BudgetsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final budgetsAsync = ref.watch(liveBudgetsProvider);
+    final at = ref.watch(_budgetDateProvider);
+    final budgetsAsync = ref.watch(budgetsForDateProvider(at));
     final categories = ref.watch(categoriesProvider).asData?.value ?? const [];
     final currency =
         ref.watch(settingsProvider).asData?.value.currency ?? 'INR';
@@ -24,6 +29,26 @@ class BudgetsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.budgetsTitle),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: TextButton.icon(
+            icon: const Icon(Icons.calendar_month),
+            label: Text(
+              'Recurring limits - ${DateFormat.yMMMd(Localizations.localeOf(context).toLanguageTag()).format(at)}',
+            ),
+            onPressed: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: at,
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+              );
+              if (picked != null) {
+                ref.read(_budgetDateProvider.notifier).state = picked;
+              }
+            },
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -91,9 +116,13 @@ class BudgetsScreen extends ConsumerWidget {
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete_outline),
-                            onPressed: () => ref
-                                .read(budgetsRepositoryProvider)
-                                .delete(b.id),
+                            onPressed: () => confirmMutation(
+                              context,
+                              title: 'Delete budget?',
+                              action: () => ref
+                                  .read(budgetsRepositoryProvider)
+                                  .delete(b.id),
+                            ),
                           ),
                         ],
                       ),
@@ -220,10 +249,12 @@ class BudgetsScreen extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    FilledButton(
+                    AsyncActionButton(
                       onPressed: () async {
                         final amt = double.tryParse(amount.text);
-                      if (amt == null || !amt.isFinite || amt <= 0) return;
+                        if (amt == null || !amt.isFinite || amt <= 0) {
+                          throw StateError('Enter a valid positive amount.');
+                        }
                         await ref
                             .read(budgetsRepositoryProvider)
                             .create(

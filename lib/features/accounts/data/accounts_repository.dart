@@ -1,3 +1,5 @@
+import '../../../core/utils/money.dart';
+import '../../transactions/data/transactions_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -38,6 +40,8 @@ class AccountsRepository {
     required AccountType type,
     double balance = 0,
   }) async {
+    Money.name(name);
+    Money.minor(balance);
     final backend = _ref.read(appBackendProvider);
     final account = Account(
       id: _uuid.v4(),
@@ -57,28 +61,47 @@ class AccountsRepository {
   }
 
   Future<Account> update(Account account) async {
+    Money.name(account.accountName);
     final backend = _ref.read(appBackendProvider);
     if (backend.isDemo) {
-      return _ref.read(demoStoreProvider).upsertAccount(account);
+      final store = _ref.read(demoStoreProvider);
+      final current = store.accounts.firstWhere((a) => a.id == account.id);
+      return store.upsertAccount(
+        current.copyWith(
+          accountName: account.accountName,
+          accountType: account.accountType,
+        ),
+      );
     }
     final uid = backend.auth!.currentUser!.uid;
     await backend.firestore!
         .collection(FirestorePaths.accounts(uid))
         .doc(account.id)
-        .update(account.toMap());
+        .update({
+          'accountName': account.accountName,
+          'accountType': account.accountType.name,
+        });
     return account;
   }
 
-  Future<void> delete(String id) async {
+  Future<void> delete(String id) => setArchived(id, true);
+
+  Future<void> setArchived(String id, bool archived) async {
     final backend = _ref.read(appBackendProvider);
     if (backend.isDemo) {
-      return _ref.read(demoStoreProvider).deleteAccountById(id);
+      final store = _ref.read(demoStoreProvider);
+      await store.upsertAccount(
+        store.accounts
+            .firstWhere((a) => a.id == id)
+            .copyWith(archived: archived),
+      );
+      return;
     }
     final uid = backend.auth!.currentUser!.uid;
     await backend.firestore!
         .collection(FirestorePaths.accounts(uid))
         .doc(id)
-        .delete();
+        .update({'archived': archived});
   }
 
   Future<void> transfer({
@@ -93,38 +116,20 @@ class AccountsRepository {
     if (!amount.isFinite || amount <= 0) {
       throw StateError('Enter a valid positive amount.');
     }
-    final backend = _ref.read(appBackendProvider);
-    if (backend.isDemo) {
-      return _ref
-          .read(demoStoreProvider)
-          .transfer(fromId: fromId, toId: toId, amount: amount, notes: notes);
-    }
-    final uid = backend.auth!.currentUser!.uid;
-    final fs = backend.firestore!;
-    await fs.runTransaction((txn) async {
-      final fromRef = fs.collection(FirestorePaths.accounts(uid)).doc(fromId);
-      final toRef = fs.collection(FirestorePaths.accounts(uid)).doc(toId);
-      final fromSnap = await txn.get(fromRef);
-      final toSnap = await txn.get(toRef);
-      final fromBal = (fromSnap.data()?['balance'] as num?)?.toDouble() ?? 0;
-      final toBal = (toSnap.data()?['balance'] as num?)?.toDouble() ?? 0;
-      txn.update(fromRef, {'balance': fromBal - amount});
-      txn.update(toRef, {'balance': toBal + amount});
-      final txRef = fs.collection(FirestorePaths.transactions(uid)).doc();
-      txn.set(
-        txRef,
-        MoneyTransaction(
-          id: txRef.id,
-          accountId: fromId,
-          categoryId: '',
-          amount: amount,
-          transactionType: TransactionType.transfer,
-          transferAccountId: toId,
-          notes: notes ?? 'Transfer',
-          createdAt: DateTime.now(),
-        ).toMap(),
-      );
-    });
+    await _ref
+        .read(transactionsRepositoryProvider)
+        .create(
+          MoneyTransaction(
+            id: _uuid.v4(),
+            accountId: fromId,
+            transferAccountId: toId,
+            categoryId: '',
+            amount: amount,
+            transactionType: TransactionType.transfer,
+            notes: notes ?? 'Transfer',
+            createdAt: DateTime.now(),
+          ),
+        );
   }
 }
 
